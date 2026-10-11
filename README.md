@@ -1,5 +1,7 @@
 # Game Night v0.1.0
 
+![Game Night: turn a Google Sheet into your own online game room, play five games with people on separate devices, and keep files and replays in Google Drive.](assets/github/game-night-hero.png)
+
 A multiplayer kit you install in your own Google Sheet and bound Apps Script project.
 
 **Start with [browser-only installation](docs/install.md).** No clasp, Node, Python, terminal, hosted asset service, or spreadsheet template is required. The release includes files to paste into Google's editor; it is not a ZIP importer. No public template is currently provided.
