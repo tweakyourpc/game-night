@@ -1,0 +1,13 @@
+Game Night 0.1.0
+See ../docs/install.md. Paste these files into a NEW bound Apps Script project.
+
+Code.gs  0b417be1968ddd22aeec64294fae6987cd89bf21771bfb6e2a2f41c6656ae10d
+Index.html  a130e0173af0669a681f905d02be0857769201b8b718fec5e61e9ac989f89e87
+appsscript.json  f671e95def36602b60e506f23f881fca97081250a44502c71f628fcbf27b034c
+asset_wordwright_board_maple.html  f55b6ba71a10fb21ea872d6cb63f54ca723d3ef374a8ded6cfead421b34eda3b
+asset_wordwright_board_walnut.html  325c0e52d5df2be306be294563e0ddb7f712cd19aebc1b97743833aa6c7acb2d
+asset_wordwright_board_felt.html  695a0bd12ab72b1a40007ade11a626be9cea537eb842cb81f9a6bc54a1871b2e
+asset_wordwright_board_slate.html  976fff36797dba5130ea6ce8e4faab1d34650c6897f82462733f9ac0ca9804b3
+
+Code.gs: Script file Code. Index and asset_*: HTML files, omit extension in editor.
+appsscript.json: enable manifest in Project Settings. Do not upload this manifest text file.

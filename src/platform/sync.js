@@ -11,7 +11,7 @@
 var GN = typeof GN !== 'undefined' ? GN : {};
 
 GN.sync = (function () {
-  var TTL = 60, PRESENCE_MS = 25000;
+  var TTL = 60, PRESENCE_MS = 75000;   // longer than the slowest (hidden-page) poll
 
   function cache() { return GN.deps.cache; }
   function safe(fn) { try { return fn(); } catch (e) { GN.deps.log('cache: ' + (e && e.message)); return null; } }
@@ -36,13 +36,24 @@ GN.sync = (function () {
     /** Presence: record that member was here, return who has been seen recently. */
     here: function (scope, memberId, ids) {
       var now = GN.deps.now();
-      safe(function () { cache().put('seen:' + scope + ':' + memberId, { at: now }, 120); });
-      var out = [];
-      (ids || []).forEach(function (id) {
-        var s = id === memberId ? { at: now } : safe(function () { return cache().get('seen:' + scope + ':' + id); });
-        if (s && now - s.at < PRESENCE_MS) out.push(id);
+      safe(function () {
+        cache().put('seen:' + scope + ':' + memberId, { at: now }, 180);
+        // anyone polling anywhere counts as "here" in the lobby
+        if (scope !== 'lobby') cache().put('seen:lobby:' + memberId, { at: now }, 180);
       });
-      return out;
+      var others = (ids || []).filter(function (id) { return id !== memberId; });
+      var keys = others.map(function (id) { return 'seen:' + scope + ':' + id; });
+      var got = safe(function () {
+        if (cache().getAll) return cache().getAll(keys);
+        var o = {};
+        keys.forEach(function (k) { o[k] = cache().get(k); });
+        return o;
+      }) || {};
+      return (ids || []).filter(function (id) {
+        if (id === memberId) return true;
+        var s = got['seen:' + scope + ':' + id];
+        return !!(s && now - s.at < PRESENCE_MS);
+      });
     },
   };
 })();

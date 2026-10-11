@@ -221,3 +221,21 @@ test('maintenance trigger is optional and installed once', () => {
   p.run('gnMaintain');
   assert.ok(p.log.some((l) => l.includes('"job":"maintain"')));
 });
+
+test('web execution uses only a binding owned by the current script; copied administration fails closed', () => {
+  const a = template(); setUp(a);
+  const token = signIn(a, 'Ann', '1234');
+  a.state.web = true;
+  assert.equal(rpc(a, 'lobby', token).ok, true);
+  assert.deepEqual(a.state.opened, [a.ss.getId()]);
+  const b = copyProject(a, { copyProperties: true }); b.state.web = true;
+  for (const fn of ['doGet', 'gnMaintain', 'gnRepairNow', 'gnInstallTrigger']) b.run(fn);
+  for (const method of ['lobby', 'adminSetting', 'saveReplay', 'uploadChunk']) assert.equal(rpc(b, method, token).code, 'NOT_SET_UP');
+  assert.equal(b.state.opened, undefined, 'never opens the original id');
+  assert.equal(b.triggers.length, 0);
+  b.state.web = false; b.confirm('YES'); setUp(b, ['Copy', 'copy code', 'Cat', '4321']);
+  b.state.web = true;
+  assert.equal(rpc(b, 'join', 'copy code').ok, true);
+  assert.equal(rpc(b, 'lobby', token).code, 'AUTH');
+  assert.ok(b.state.opened.every(id => id === b.ss.getId()));
+});

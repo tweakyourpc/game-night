@@ -1,0 +1,15 @@
+{
+  "name": "game-night",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "description": "A self-hosted multiplayer tabletop for Google Sheets and Apps Script. Node is used only for tests and the release build.",
+  "scripts": {
+    "test": "node --test test/platform/*.test.js test/games/*.test.js test/tools/*.test.js",
+    "dev": "node tools/dev_server.js",
+    "build": "node tools/build.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

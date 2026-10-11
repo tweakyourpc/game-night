@@ -176,6 +176,8 @@ GN.matches = (function () {
         response: res.response || {}, events: events }, KEEP);
       store().put('Matches', m);                       // the commit point
       followupsQuietly(m);
+      GN.sync.here('m:' + m.id, me.id, []);            // acting counts as being here
+      GN.sync.here('t:' + m.table_id, me.id, []);
       return { ok: true, rev: rev, response: res.response || {}, match: viewFor(m, me) };
     });
     if (out.ok && !out.duplicate) GN.outbox.flushQuietly();

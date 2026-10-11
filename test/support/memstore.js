@@ -70,6 +70,7 @@ function makeDeps(opts = {}) {
   const cache = new Map();
   const mails = [];
   const files = new Map();
+  let fileSeq = 0;
   let lockHeld = false;
   let clock = opts.now0 || 1_800_000_000_000;
   const faults = {};
@@ -90,6 +91,7 @@ function makeDeps(opts = {}) {
     },
     cache: {
       get(k) { return cache.has(k) ? JSON.parse(cache.get(k)) : null; },
+      getAll(keys) { const o = {}; keys.forEach((k) => { if (cache.has(k)) o[k] = JSON.parse(cache.get(k)); }); return o; },
       put(k, v) {
         if (faults['cache.put'] > 0 && /^(m|t|lobby):/.test(k)) { faults['cache.put']--; throw new Error('injected cache failure'); }
         cache.set(k, JSON.stringify(v));
@@ -108,15 +110,24 @@ function makeDeps(opts = {}) {
     drive: {
       saveText(folder, name, text) {
         if (lockHeld) throw new Error('drive write while holding the lock');
-        const id = 'f' + files.size;
+        for (const [k, f] of files) if (f.folder === folder && f.name === name) files.delete(k);
+        const id = 'f' + (++fileSeq);
         files.set(id, { folder, name, text });
         return { id, url: 'https://drive.test/' + id };
       },
       saveBytes(folder, name, mime, base64) {
         if (lockHeld) throw new Error('drive write while holding the lock');
-        const id = 'f' + files.size;
+        if (faults['drive.saveBytes'] > 0) { faults['drive.saveBytes']--; throw new Error('injected drive failure'); }
+        for (const [k, f] of files) if (f.folder === folder && f.name === name) files.delete(k);
+        const id = 'f' + (++fileSeq);
         files.set(id, { folder, name, mime, base64 });
         return { id, url: 'https://drive.test/' + id };
+      },
+      find(folder, name) { for (const [k, f] of files) if (f.folder === folder && f.name === name) return k; return null; },
+      joinBytes(folder, name, mime, ids) {
+        if (lockHeld) throw new Error('drive write while holding the lock');
+        const bytes = Buffer.concat(ids.map((k) => Buffer.from(files.get(k).base64, 'base64')));
+        return deps.drive.saveBytes(folder, name, mime, bytes.toString('base64'));
       },
       readText(id) { const f = files.get(id); return f ? f.text : null; },
       remove(id) { files.delete(id); },

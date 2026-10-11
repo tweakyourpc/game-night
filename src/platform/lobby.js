@@ -27,6 +27,7 @@ GN.lobby = (function () {
       here: here,
       catalog: GN.catalog.describe(),
       themes: GN.catalog.themes(),
+      defaultTheme: GN.catalog.theme(store().setting('default_theme')),
       tables: tables.sort(function (a, b) { return b.updated - a.updated; }).map(function (t) {
         var g = GN.catalog.game(t.game_id);
         return {
@@ -61,7 +62,13 @@ GN.lobby = (function () {
       var out = { ok: true, at: GN.deps.now() };
       if (want.lobby !== undefined) {
         var v = GN.sync.lobbyVersion();
-        out.lobby = want.lobby === v ? { changed: false, v: v } : { changed: true, v: v, lobby: lobbyData(me) };
+        if (want.lobby === v) {
+          // presence changes without a lobby version bump; ids come from the page, so no sheet read
+          var ids = Array.isArray(want.members) ? want.members.filter(function (x) { return GN.util.isId(x); }).slice(0, 60) : [];
+          out.lobby = { changed: false, v: v, here: GN.sync.here('lobby', me.id, ids) };
+        } else {
+          out.lobby = { changed: true, v: v, lobby: lobbyData(me) };
+        }
       }
       if (want.table && GN.util.isId(want.table.id)) {
         var th = GN.sync.hint('t:' + want.table.id);

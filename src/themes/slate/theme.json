@@ -1,0 +1,59 @@
+{
+  "templateVersion": 1,
+  "id": "slate",
+  "name": "Slate Study",
+  "version": "1.0.0",
+  "description": "Cool slate, chalk lines and enamel pieces. A quiet library table.",
+  "colors": {
+    "table": "#1f2a33",
+    "tableText": "#e8eef2",
+    "tableMuted": "#9fb0bc",
+    "surface": "#f1f4f6",
+    "surfaceAlt": "#dfe6eb",
+    "surfaceText": "#16212a",
+    "muted": "#55636f",
+    "line": "rgba(22, 33, 42, 0.25)",
+    "accent": "#2f6f8f",
+    "accentText": "#ffffff",
+    "focus": "#7fd1ff",
+    "good": "#2b7350",
+    "warn": "#8a6400",
+    "bad": "#a33a3a",
+    "boardBase": "#2e3b46",
+    "boardLine": "#c9d6df",
+    "boardCell": "#3c4c59",
+    "boardDark": "#24303a",
+    "highlight": "#7fd1ff",
+    "players": ["#e4572e", "#4fa3d9", "#f2c14e", "#7bc67b"],
+    "playerText": ["#ffffff", "#0d1b26", "#1f1600", "#0d2610"]
+  },
+  "symbols": ["●", "▲", "■", "◆"],
+  "typography": {
+    "display": "\"Avenir Next\", \"Segoe UI\", Roboto, \"Helvetica Neue\", Arial, sans-serif",
+    "body": "\"Avenir Next\", \"Segoe UI\", Roboto, \"Helvetica Neue\", Arial, sans-serif",
+    "ui": "system-ui, -apple-system, \"Segoe UI\", Roboto, sans-serif",
+    "numbers": "\"SF Mono\", Menlo, Consolas, \"Roboto Mono\", monospace",
+    "scale": 1
+  },
+  "textures": {
+    "table": "radial-gradient(ellipse at 30% 20%, rgba(255,255,255,0.06), transparent 55%), repeating-linear-gradient(135deg, rgba(255,255,255,0.015) 0 2px, transparent 2px 6px), linear-gradient(180deg, #24313b, #182129)",
+    "surface": "linear-gradient(180deg, #f6f8fa, #e9eef2)",
+    "board": "repeating-linear-gradient(45deg, rgba(255,255,255,0.025) 0 2px, transparent 2px 5px), linear-gradient(160deg, #34434f, #26323c)",
+    "piece": "radial-gradient(circle at 35% 30%, rgba(255,255,255,0.6), rgba(255,255,255,0) 40%), radial-gradient(circle at 50% 55%, rgba(0,0,0,0) 60%, rgba(0,0,0,0.25) 100%)"
+  },
+  "borders": {
+    "radius": "6px",
+    "small": "4px",
+    "width": "1px",
+    "frame": "0 0 0 1px #0f171d, 0 0 0 5px #3c4b57, 0 12px 28px rgba(0,0,0,0.5)",
+    "shadow": "0 1px 4px rgba(0,0,0,0.3)"
+  },
+  "controls": {
+    "buttonRadius": "999px",
+    "buttonShadow": "0 1px 2px rgba(0,0,0,0.35)",
+    "buttonFace": "linear-gradient(180deg, #367ea2, #2a6684)",
+    "buttonQuiet": "linear-gradient(180deg, #ffffff, #e3e9ee)"
+  },
+  "sounds": { "palette": "chime", "volume": 0.5 },
+  "artwork": {}
+}

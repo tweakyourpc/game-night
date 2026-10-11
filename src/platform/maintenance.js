@@ -31,6 +31,7 @@ GN.maintenance = (function () {
         if (t.status === 'playing' && m && m.status !== 'active' && GN.tables.release(m)) fixed.tables++;
       });
     });
+    if (GN.files) GN.files.cleanup();
     var s = GN.outbox.flushQuietly();
     fixed.sent = s ? s.sent : 0;
     return fixed;

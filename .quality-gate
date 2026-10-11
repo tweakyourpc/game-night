@@ -1,0 +1,4 @@
+set -euo pipefail
+npm test
+npm run build
+node tools/release-audit.mjs

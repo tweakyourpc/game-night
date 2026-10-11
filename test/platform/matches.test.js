@@ -209,6 +209,23 @@ test('an idle poll reads no spreadsheet rows', () => {
   assert.equal(reads, 0);
 });
 
+test('lobby presence: someone at a table shows as here, with no sheet reads', () => {
+  const { w, table } = started();
+  const v = w.call('lobby', w.tokens.Ann).v;
+  const ann = w.idOf('Ann'), bob = w.idOf('Bob');
+  w.call('sync', w.tokens.Bob, { table: { id: table.id, rev: -1 } });          // Bob is on the table page
+  const counts = { ...w.deps.store.counts };
+  const r = w.call('sync', w.tokens.Ann, { lobby: v, members: [ann, bob] });
+  assert.equal(r.lobby.changed, false);
+  assert.deepEqual([...r.lobby.here].sort(), [ann, bob].sort());
+  const reads = Object.keys(w.deps.store.counts).filter((k) => /^(get|list):/.test(k))
+    .reduce((n, k) => n + w.deps.store.counts[k] - (counts[k] || 0), 0);
+  assert.equal(reads, 0);
+  w.deps.tick(80000);                                                          // Bob leaves
+  const later = w.call('sync', w.tokens.Ann, { lobby: v, members: [ann, bob] });
+  assert.deepEqual([...later.lobby.here], [ann]);
+});
+
 test('replay: versioned, stable ids and name snapshots, the actual rolls, explicit final', () => {
   const { w, match } = started();
   w.act(w.actor(match.id), match.id, { type: 'roll' });

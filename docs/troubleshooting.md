@@ -1,0 +1,16 @@
+# Troubleshooting
+
+- **Not set up:** run setup from the new bound spreadsheet, then deploy its new script version. A copied project deliberately rejects inherited IDs. Do not paste an old sheet ID into properties.
+- **Missing Game Night menu:** save all files and reload Sheets, or run `gnSetup` from the bound editor. A standalone script is unsupported.
+- **Authorization/access denied:** use the installation owner's account and review organization restrictions. “Anyone” access and “Execute as: Me” are intended. Players do not authorize server services individually.
+- **Lost admin PIN:** a second admin may reset it through Group settings. With no signed-in admin, the trusted spreadsheet owner must recover access deliberately; there is no browser password-reset flow. Do not reset setup or copy a used sheet expecting to retain games.
+- **Unexpected screen change:** enable `?debug=1`, note action/time and whether it showed entry or lobby. Stale response and navigation guards were added; the original unexplained lobby report has not been conclusively reproduced. Entry after AUTH means a revoked/invalid session, not presence loss. Sessions do not expire by time. Avoid sharing token values in reports.
+- **Busy/stale:** retries preserve action IDs; another accepted action can make your revision stale. Review the fresh state and retry your intended move. Use **Repair now** or the optional trigger if follow-ups lag.
+- **Word list fails:** the first checked Wordwright game needs UrlFetch permission and access to the ENABLE GitHub URL; the owner caches the dictionary in Drive. For an agreed casual game the host may disable checking.
+- **Picture absent:** verify the four asset HTML names. The procedural board remains available. No external image hosting is required.
+- **Video unavailable:** browser codec, canvas capture, SVG rasterization or iframe permissions may be missing. Keep the tab visible. Recording failure releases tracks and leaves JSON replay export available. MP4 is not guaranteed. A browser may silently block an anchor download; check its downloads UI and permissions, or ask an admin to save the replay to Drive.
+- **Drive upload cancelled/failed:** closing replay cancels after the current chunk finishes. Server failures try to remove owned pieces; metadata permits maintenance to retry after 24 hours. Run Repair now later if no traffic/trigger runs. Unrecoverable Drive permission errors require the owner to inspect `Game Night files/uploads`; do not delete another instance's folder. Completed video names include a unique upload prefix.
+- **Meet blocked:** use Join call directly, allow the popup, and check the pasted HTTPS URL. No call is automatically created.
+- **Long match fails to save:** Sheets limits each cell to 50,000 characters; accumulated state/actions can hit it. No archival is implemented. Preserve a replay and start another match if feasible; do not delete rows during play.
+
+See [pending Google checks](google-acceptance.md) and [verification evidence](verification.md).

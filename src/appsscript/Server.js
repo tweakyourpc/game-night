@@ -65,7 +65,7 @@ function gnSetup() {
   var res = GN.install.initialize({ groupName: group, code: code, adminName: name, adminPin: pin,
     adminEmail: Session.getEffectiveUser().getEmail() });
   var props = PropertiesService.getScriptProperties();
-  props.setProperties({ SHEET_ID: ss.getId(), INSTALL_ID: res.installId });
+  props.setProperties({ SHEET_ID: ss.getId(), INSTALL_ID: res.installId, SCRIPT_ID: ScriptApp.getScriptId() });
   ui.alert('Set up', 'Done. Next, publish the web app: open the menu ' + GN.NAMES.platform +
     ' > "How to publish the web app".', ui.ButtonSet.OK);
 }
@@ -86,6 +86,7 @@ function gnPublishHelp() {
 }
 
 function gnInstallTrigger() {
+  if (!gnReady_()) return;
   var ui = SpreadsheetApp.getUi();
   var has = ScriptApp.getProjectTriggers().some(function (t) { return t.getHandlerFunction() === 'gnMaintain'; });
   if (!has) ScriptApp.newTrigger('gnMaintain').timeBased().everyMinutes(10).create();
@@ -115,7 +116,7 @@ function gnBinding_(ss) {
   var props = PropertiesService.getScriptProperties();
   gnInitDeps_(ss);
   var installId = GN.deps.store.setting('install_id');
-  if (props.getProperty('SHEET_ID') === ss.getId() && installId && props.getProperty('INSTALL_ID') === installId) return 'ours';
+  if (props.getProperty('SCRIPT_ID') === ScriptApp.getScriptId() && props.getProperty('SHEET_ID') === ss.getId() && installId && props.getProperty('INSTALL_ID') === installId) return 'ours';
   var hasData = !!installId || GN.install.DATA_TABLES.some(function (t) {
     var sh = ss.getSheetByName(t);
     return sh && sh.getLastRow() > 1;
@@ -136,17 +137,21 @@ function gnFreshInstall_(ss) {
 
 // ------------------------------------------------------------------ web app
 
-function doGet() {
+function doGet(e) {
+  var p = (e && e.parameter) || {};
   var t = HtmlService.createTemplateFromFile('Index');
-  t.ready = gnReady_();
+  var ready = gnReady_();
+  t.ready = ready;
+  // the only server data in the page; "<" is escaped so it cannot close the script tag
+  t.boot = JSON.stringify({
+    ready: ready, platform: GN.NAMES.platform,
+    link: GN.util.isId(p.t) ? p.t : '',
+    debug: p.debug === '1',
+  }).replace(/</g, '\\u003c');
   return t.evaluate()
     .setTitle(GN.NAMES.platform)
     .addMetaTag('viewport', 'width=device-width, initial-scale=1')
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.DEFAULT);
-}
-
-function include(name) {
-  return HtmlService.createHtmlOutputFromFile(name).getContent();
 }
 
 /** The single function the page calls. */
@@ -169,15 +174,14 @@ function call(method, args) {
 }
 
 /**
- * Set up AND bound to this spreadsheet. The spreadsheet is always the script's own
- * container, never an id from properties, so a copy can never reach the sheet it was
- * copied from even if its properties came along.
+ * Setup binds both the container and script project. Web requests may open the saved
+ * sheet only after matching the current script id; inherited copy properties fail closed.
  */
 function gnReady_() {
   var ss = gnContainer_();
   if (!ss) return false;
   var props = PropertiesService.getScriptProperties();
-  if (props.getProperty('SHEET_ID') !== ss.getId()) return false;
+  if (props.getProperty('SCRIPT_ID') !== ScriptApp.getScriptId() || props.getProperty('SHEET_ID') !== ss.getId()) return false;
   gnInitDeps_(ss);
   GN.deps.store.list('Settings');              // one read; the settings below come from memory
   var installId = GN.deps.store.setting('install_id');
@@ -185,7 +189,15 @@ function gnReady_() {
 }
 
 function gnContainer_() {
-  try { return SpreadsheetApp.getActiveSpreadsheet(); } catch (e) { return null; }
+  var active = null;
+  try { active = SpreadsheetApp.getActiveSpreadsheet(); } catch (e) { /* web execution */ }
+  if (active) return active;
+  // A copied bound project has a different script id. Check BEFORE opening any id.
+  var props = PropertiesService.getScriptProperties();
+  if (props.getProperty('SCRIPT_ID') !== ScriptApp.getScriptId()) return null;
+  var id = props.getProperty('SHEET_ID');
+  if (!id) return null;
+  try { return SpreadsheetApp.openById(id); } catch (e) { return null; }
 }
 
 // ------------------------------------------------------------------ adapters
@@ -204,6 +216,11 @@ function gnInitDeps_(ss) {
     store: gnSheetStore_(GN_SS_),
     cache: {
       get: function (k) { var v = cache.get(k); return v ? JSON.parse(v) : null; },
+      getAll: function (keys) {
+        var raw = keys.length ? cache.getAll(keys) : {}, out = {};
+        Object.keys(raw).forEach(function (k) { out[k] = JSON.parse(raw[k]); });
+        return out;
+      },
       put: function (k, v, seconds) { cache.put(k, JSON.stringify(v), Math.min(21600, seconds || 60)); },
       remove: function (k) { cache.remove(k); },
     },
@@ -228,6 +245,9 @@ function gnInitDeps_(ss) {
     appUrl: function () { try { return ScriptApp.getService().getUrl() || ''; } catch (e) { return ''; } },
     drive: gnDrive_(props),
     services: { dict: gnDictionary_ },
+    asset: function (file) {
+      try { return HtmlService.createHtmlOutputFromFile(file).getContent(); } catch (e) { return null; }   // optional file
+    },
     log: function (s) { console.log(String(s).slice(0, 500)); },
   };
   return GN.deps;
@@ -255,7 +275,20 @@ function gnDrive_(props) {
       return { id: file.getId(), url: file.getUrl() };
     },
     saveBytes: function (sub, name, mime, base64) {
-      var file = folder(sub).createFile(Utilities.newBlob(Utilities.base64Decode(base64), mime, name));
+      var f = folder(sub);
+      var old = f.getFilesByName(name);
+      while (old.hasNext()) old.next().setTrashed(true);          // a retried piece replaces the first
+      var file = f.createFile(Utilities.newBlob(Utilities.base64Decode(base64), mime, name));
+      return { id: file.getId(), url: file.getUrl() };
+    },
+    find: function (sub, name) {
+      var it = folder(sub).getFilesByName(name);
+      return it.hasNext() ? it.next().getId() : null;
+    },
+    joinBytes: function (sub, name, mime, ids) {
+      var bytes = [];
+      ids.forEach(function (id) { bytes = bytes.concat(DriveApp.getFileById(id).getBlob().getBytes()); });
+      var file = folder(sub).createFile(Utilities.newBlob(bytes, mime, name));
       return { id: file.getId(), url: file.getUrl() };
     },
     readText: function (id) { return DriveApp.getFileById(id).getBlob().getDataAsString(); },

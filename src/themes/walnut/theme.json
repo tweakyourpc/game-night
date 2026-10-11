@@ -1,0 +1,59 @@
+{
+  "templateVersion": 1,
+  "id": "walnut",
+  "name": "Walnut Parlor",
+  "version": "1.0.0",
+  "description": "Warm wood, cream card stock and brass. A family table after dinner.",
+  "colors": {
+    "table": "#3a2416",
+    "tableText": "#f6ead7",
+    "tableMuted": "#c9b394",
+    "surface": "#f5ead6",
+    "surfaceAlt": "#eadbc0",
+    "surfaceText": "#2a1a0f",
+    "muted": "#6f5947",
+    "line": "rgba(42, 26, 15, 0.28)",
+    "accent": "#a8461f",
+    "accentText": "#fff8ee",
+    "focus": "#ffc94d",
+    "good": "#2d6e3a",
+    "warn": "#946300",
+    "bad": "#9c2b24",
+    "boardBase": "#c99a5b",
+    "boardLine": "#6b4423",
+    "boardCell": "#e7c28c",
+    "boardDark": "#7a4a26",
+    "highlight": "#ffd24a",
+    "players": ["#b8322a", "#2563a8", "#e1a510", "#2f7d4f"],
+    "playerText": ["#ffffff", "#ffffff", "#1c1300", "#ffffff"]
+  },
+  "symbols": ["●", "▲", "■", "◆"],
+  "typography": {
+    "display": "\"Iowan Old Style\", \"Palatino Linotype\", Palatino, \"Book Antiqua\", Georgia, serif",
+    "body": "\"Iowan Old Style\", \"Palatino Linotype\", Palatino, Georgia, serif",
+    "ui": "system-ui, -apple-system, \"Segoe UI\", Roboto, sans-serif",
+    "numbers": "Georgia, \"Times New Roman\", serif",
+    "scale": 1
+  },
+  "textures": {
+    "table": "repeating-linear-gradient(92deg, rgba(255,255,255,0.025) 0 3px, rgba(0,0,0,0.05) 3px 7px, rgba(255,255,255,0.02) 7px 11px), repeating-linear-gradient(88deg, rgba(0,0,0,0.08) 0 1px, transparent 1px 23px), linear-gradient(180deg, #4a2d1b, #2d1b10)",
+    "surface": "radial-gradient(ellipse at 20% 10%, rgba(255,255,255,0.55), transparent 60%), linear-gradient(180deg, #f8eedc, #efe0c6)",
+    "board": "repeating-linear-gradient(90deg, rgba(0,0,0,0.04) 0 2px, transparent 2px 9px), linear-gradient(135deg, #d4a868, #b88447)",
+    "piece": "radial-gradient(circle at 35% 30%, rgba(255,255,255,0.45), rgba(255,255,255,0) 45%), radial-gradient(circle at 50% 60%, rgba(0,0,0,0) 55%, rgba(0,0,0,0.28) 100%)"
+  },
+  "borders": {
+    "radius": "12px",
+    "small": "6px",
+    "width": "2px",
+    "frame": "0 0 0 3px #6b4423, 0 0 0 6px #c9a25d, 0 10px 30px rgba(0,0,0,0.45)",
+    "shadow": "0 2px 6px rgba(0,0,0,0.25)"
+  },
+  "controls": {
+    "buttonRadius": "8px",
+    "buttonShadow": "inset 0 -2px 0 rgba(0,0,0,0.25), 0 1px 2px rgba(0,0,0,0.3)",
+    "buttonFace": "linear-gradient(180deg, #b9562b, #96401b)",
+    "buttonQuiet": "linear-gradient(180deg, #fbf3e4, #ead9bb)"
+  },
+  "sounds": { "palette": "wood", "volume": 0.6 },
+  "artwork": {}
+}

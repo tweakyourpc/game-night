@@ -132,8 +132,8 @@ function makeProject(ss, opts = {}) {
   const services = {
     SpreadsheetApp: {
       getActive: () => ss,
-      getActiveSpreadsheet: () => ss,
-      openById: () => { throw new Error('openById is not expected: the store uses the container spreadsheet'); },
+      getActiveSpreadsheet: () => state.web ? null : ss,
+      openById: (id) => { state.opened = (state.opened || []).concat(id); if (id !== ss.getId()) throw new Error('foreign sheet'); return ss; },
       getUi: () => ({
         Button, ButtonSet,
         createMenu: (title) => {
@@ -166,6 +166,7 @@ function makeProject(ss, opts = {}) {
     CacheService: {
       getScriptCache: () => ({
         get: (k) => (cache.has(k) ? cache.get(k) : null),
+        getAll: (keys) => { const o = {}; keys.forEach((k) => { if (cache.has(k)) o[k] = cache.get(k); }); return o; },
         put: (k, v) => {
           if (String(v).length > 100 * 1024) throw new Error('Argument too large: value');
           cache.set(k, String(v));
@@ -196,6 +197,7 @@ function makeProject(ss, opts = {}) {
     MailApp: { sendEmail: (o) => { if (lockBusy) throw new Error('mail sent while holding the lock'); mails.push(o); } },
     Session: { getEffectiveUser: () => ({ getEmail: () => opts.ownerEmail || 'owner@example.com' }) },
     ScriptApp: {
+      getScriptId: () => "script-" + ss.getId(),
       getService: () => ({ getUrl: () => state.url }),
       getProjectTriggers: () => triggers.slice(),
       deleteTrigger: (t) => { const i = triggers.indexOf(t); if (i >= 0) triggers.splice(i, 1); },
@@ -226,7 +228,7 @@ function makeProject(ss, opts = {}) {
   };
 
   const context = vm.createContext({ ...services });
-  const files = serverFiles().map((f) => path.join(SRC, f)).concat(opts.extra || [], [path.join(SRC, 'appsscript', 'Server.js')]);
+  const files = opts.bundle ? [opts.bundle].concat(opts.extra || []) : serverFiles().map((f) => path.join(SRC, f)).concat(opts.extra || [], [path.join(SRC, 'appsscript', 'Server.js')]);
   for (const file of files) vm.runInContext(fs.readFileSync(file, 'utf8'), context, { filename: file });
 
   /** Run a server function the way Apps Script does: a fresh execution, same project. */

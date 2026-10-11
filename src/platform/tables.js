@@ -100,6 +100,7 @@ GN.tables = (function () {
       work.actions = GN.util.remember(work.actions, { id: req.actionId, player: me.id, rev: work.rev, result: result }, 40);
       store().put('Tables', work);                          // the commit point
       afterTable(work);
+      GN.sync.here('t:' + work.id, me.id, []);              // acting counts as being here
       return { ok: true, table: view(work, me), result: result };
     });
     if (out.ok && !out.duplicate) GN.outbox.flushQuietly();
