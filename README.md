@@ -4,6 +4,8 @@ A multiplayer kit you install in your own Google Sheet and bound Apps Script pro
 
 **Start with [browser-only installation](docs/install.md).** No clasp, Node, Python, terminal, hosted asset service, or spreadsheet template is required. The release includes files to paste into Google's editor; it is not a ZIP importer. No public template is currently provided.
 
+Before setting up a regular group, decide which Google account should run Game Night. A separate account is an optional way to keep Game Night invitations and Drive files apart from personal or everyday work activity. The account you deploy under sends app email and stores app files; game records stay in the spreadsheet. This can be a personal Google account or an organization-managed account. Workspace, mail delegation, and special service-account configuration are not required. See [installation](docs/install.md) and [identity/access](docs/identity.md).
+
 ## Implemented
 
 - Wordwright (2-4), Four in a Row (2), Dots and Boxes (2-4), Checkers (2), and Fivefold (2-4).
