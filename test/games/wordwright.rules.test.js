@@ -139,6 +139,38 @@ test('six scoreless turns end the game', () => {
   assert.equal(R.passTurn(s, 'me').ok, false);
 });
 
+test('resignation ends a two-player match with a forfeit winner and frozen score', () => {
+  const s = R.newGameState(['me', 'mom'], seq());
+  s.racks.mom = [...'QZ'];
+  s.scores.mom = 35;
+  const beforeBag = s.bag.length;
+  assert.ok(R.resignPlayer(s, 'mom', seq(), 123).ok);
+  assert.equal(s.status, 'finished');
+  assert.deepEqual(s.winners, ['me']);
+  assert.equal(s.scores.mom, 15);
+  assert.deepEqual(s.racks.mom, []);
+  assert.equal(s.bag.length, beforeBag + 2);
+  assert.equal(s.finishReason, 'resignation');
+  assert.equal(R.resignPlayer(s, 'me', seq()).ok, false);
+});
+
+test('resignation outside turn skips that player and excludes them from later scoring', () => {
+  const s = R.newGameState(['a', 'b', 'c'], seq());
+  s.racks.b = [...'QZ'];
+  s.scores.b = 100;
+  assert.ok(R.resignPlayer(s, 'b', seq()).ok);
+  assert.equal(s.status, 'active');
+  assert.equal(s.turn, 0);
+  assert.equal(s.scores.b, 80);
+  assert.ok(R.passTurn(s, 'a').ok);
+  assert.equal(s.players[s.turn], 'c');
+  for (let i = 0; i < 5; i++) assert.ok(R.passTurn(s, s.players[s.turn]).ok);
+  assert.equal(s.status, 'finished');
+  assert.equal(s.scores.b, 80);
+  assert.ok(!s.winners.includes('b'));
+  assert.equal(s.adjustments.filter((a) => a.player === 'b').length, 1);
+});
+
 test('public view hides the bag order and the other rack', () => {
   const s = R.newGameState(['me', 'mom'], seq());
   const v = R.publicView(s, 'mom');

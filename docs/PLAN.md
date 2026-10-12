@@ -1,5 +1,7 @@
 # Game Night: implementation plan
 
+> Historical design record. This includes superseded names, examples, interfaces and unimplemented proposals. It is not the current installation or feature guide. Use [README](../README.md), [installation](install.md), and [verification](verification.md) for current behavior. This historical file is excluded from the installation ZIP.
+
 *Status: in progress since 2026-10-11. Revision 2, below, supersedes the original plan
 where they differ.*
 

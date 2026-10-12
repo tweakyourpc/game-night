@@ -2752,7 +2752,7 @@ GN.wordwright = (function () {
     var racks = {}, scores = {};
     players.forEach(function (p) { racks[p] = draw(bag, []); scores[p] = 0; });
     return { players: players.slice(), board: emptyBoard(), bag: bag, racks: racks, scores: scores,
-      turn: 0, scoreless: 0, status: 'active', moves: [], winner: null, adjustments: [] };
+      turn: 0, scoreless: 0, status: 'active', moves: [], winner: null, adjustments: [], resigned: [] };
   }
 
   function currentPlayer(s) { return s.players[s.turn]; }
@@ -2763,7 +2763,11 @@ GN.wordwright = (function () {
     return null;
   }
 
-  function advance(s) { s.turn = (s.turn + 1) % s.players.length; }
+  function activePlayers(s) { return s.players.filter(function (p) { return (s.resigned || []).indexOf(p) < 0; }); }
+  function advance(s) {
+    do { s.turn = (s.turn + 1) % s.players.length; }
+    while ((s.resigned || []).indexOf(currentPlayer(s)) >= 0);
+  }
 
   function scoreless(s) {
     s.scoreless = (s.scoreless || 0) + 1;
@@ -2777,8 +2781,8 @@ GN.wordwright = (function () {
    */
   function finish(s, wentOut) {
     var bonus = 0;
-    s.adjustments = [];
-    s.players.forEach(function (p) {
+    s.adjustments = s.adjustments || [];
+    activePlayers(s).forEach(function (p) {
       var v = rackValue(s.racks[p]);
       if (v) s.adjustments.push({ player: p, points: -v, reason: 'unplayed tiles ' + s.racks[p].join('') });
       s.scores[p] -= v;
@@ -2790,10 +2794,35 @@ GN.wordwright = (function () {
     }
     s.status = 'finished';
     s.wentOut = wentOut || null;
-    var best = Math.max.apply(null, s.players.map(function (p) { return s.scores[p]; }));
-    var top = s.players.filter(function (p) { return s.scores[p] === best; });
+    var eligible = activePlayers(s);
+    var best = Math.max.apply(null, eligible.map(function (p) { return s.scores[p]; }));
+    var top = eligible.filter(function (p) { return s.scores[p] === best; });
     s.winner = top.length === 1 ? top[0] : 'tie';
     s.winners = top;
+    s.finishReason = wentOut ? 'went out' : 'six scoreless turns in a row';
+  }
+
+  function resignPlayer(s, player, rng, now) {
+    if (s.status !== 'active') return fail('This game is over.');
+    if (s.players.indexOf(player) < 0 || (s.resigned || []).indexOf(player) >= 0) return fail('You are not an active player.');
+    s.resigned = s.resigned || [];
+    var penalty = rackValue(s.racks[player]);
+    if (penalty) {
+      s.scores[player] -= penalty;
+      s.adjustments.push({ player: player, points: -penalty, reason: 'resigned: unplayed tiles ' + s.racks[player].join('') });
+    }
+    s.bag = shuffle(s.bag.concat(s.racks[player]), rng);
+    s.racks[player] = [];
+    s.resigned.push(player);
+    s.moves.push({ player: player, type: 'resign', score: 0, at: now || 0 });
+    var remaining = activePlayers(s);
+    if (remaining.length === 1) {
+      s.status = 'finished';
+      s.winner = remaining[0];
+      s.winners = remaining;
+      s.finishReason = 'resignation';
+    } else if (currentPlayer(s) === player) advance(s);
+    return { ok: true };
   }
 
   function playMove(s, player, placements, dict, now) {
@@ -2845,7 +2874,7 @@ GN.wordwright = (function () {
     s.players.forEach(function (p) { rackCounts[p] = s.racks[p].length; });
     return {
       players: s.players, board: s.board, scores: s.scores, turn: s.turn, current: currentPlayer(s),
-      status: s.status, winner: s.winner, bagCount: s.bag.length, rackCounts: rackCounts,
+      status: s.status, winner: s.winner, bagCount: s.bag.length, rackCounts: rackCounts, resigned: s.resigned || [],
       myRack: viewer && s.racks[viewer] ? s.racks[viewer] : null,
       moves: s.moves.slice(-12), moveCount: s.moves.length, scoreless: s.scoreless || 0,
       adjustments: s.status === 'active' ? [] : s.adjustments,
@@ -2856,7 +2885,7 @@ GN.wordwright = (function () {
     SIZE: SIZE, CENTER: CENTER, RACK_SIZE: RACK_SIZE, BINGO: BINGO, DISTRIBUTION: DISTRIBUTION, VALUES: VALUES, PREMIUM: PREMIUM,
     emptyBoard: emptyBoard, newBag: newBag, shuffle: shuffle, evaluateMove: evaluateMove, scoreWord: scoreWord,
     cleanPlacements: cleanPlacements, cleanLetters: cleanLetters, rackValue: rackValue,
-    newGameState: newGameState, playMove: playMove, exchangeTiles: exchangeTiles, passTurn: passTurn, publicView: publicView,
+    newGameState: newGameState, playMove: playMove, exchangeTiles: exchangeTiles, passTurn: passTurn, resignPlayer: resignPlayer, publicView: publicView,
   };
 })();
 
@@ -2872,7 +2901,7 @@ GN.games.wordwright = (function () {
 
   function result(s) {
     return { status: 'finished', winners: s.winners.slice(), scores: GN.util.clone(s.scores), adjustments: GN.util.clone(s.adjustments),
-      reason: s.wentOut ? 'went out' : 'six scoreless turns in a row' };
+      reason: s.finishReason || (s.wentOut ? 'went out' : 'six scoreless turns in a row') };
   }
 
   return {
@@ -2887,7 +2916,7 @@ GN.games.wordwright = (function () {
         choices: [{ value: 'drawn', label: 'Drawn (matches the look)' }, { value: 'maple', label: 'Maple artwork' },
           { value: 'walnut', label: 'Walnut artwork' }, { value: 'felt', label: 'Felt artwork' }, { value: 'slate', label: 'Slate artwork' }] },
     ],
-    anytime: [],
+    anytime: ['resign'],
     assets: ['board-maple', 'board-walnut', 'board-felt', 'board-slate'],
 
     setup: function (ctx) { return W.newGameState(ctx.players, ctx.rng); },
@@ -2908,6 +2937,10 @@ GN.games.wordwright = (function () {
         r = W.passTurn(s, player, ctx.now);
         if (!r.ok) return r;
         events = [{ type: 'pass', public: { player: player } }];
+      } else if (action.type === 'resign') {
+        r = W.resignPlayer(s, player, ctx.rng, ctx.now);
+        if (!r.ok) return r;
+        events = [{ type: 'resign', public: { player: player } }];
       } else {
         return { ok: false, error: 'Unknown move.' };
       }

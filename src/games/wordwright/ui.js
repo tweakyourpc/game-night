@@ -6,6 +6,8 @@
  * Input: tap a rack tile then a square, drag a tile onto a square, or focus a square
  * and type letters (arrow keys move, Backspace takes back, Enter plays). Unplayed tiles
  * survive polling; they return to the rack only if the board changes under them.
+ * Rack order is local to this browser. Drag between rack slots, or tap Arrange and
+ * then two tiles, to sort letters without a server request.
  */
 (function () {
   var VALUES = { A: 1, B: 3, C: 3, D: 2, E: 1, F: 4, G: 2, H: 4, I: 1, J: 8, K: 5, L: 1, M: 3, N: 1, O: 1, P: 3, Q: 10,
@@ -69,6 +71,7 @@
     '.ww-rack { display: flex; justify-content: center; gap: 6px; padding: 8px; border-radius: var(--gn-radius); background: rgba(0,0,0,.25); min-height: 64px; touch-action: none; }',
     '.ww-rtile { width: 52px; height: 52px; border: 0; background: none; padding: 0; cursor: grab; border-radius: 8px; }',
     '.ww-rtile:focus-visible { outline: 3px solid var(--gn-focus); }',
+    '.ww-rtile.ww-target { outline: 3px solid var(--gn-highlight); }',
     '.ww-rtile[disabled] { cursor: default; }',
     '@media (max-width: 480px) { .ww-rtile { width: 42px; height: 42px; } .ww-rack { gap: 4px; padding: 6px; } }',
     '.ww-ghost { position: fixed; width: 52px; height: 52px; pointer-events: none; z-index: 80; transform: translate(-50%, -60%) scale(1.15); }',
@@ -140,6 +143,7 @@
     var order = [];             // local rack order: letters as the player arranged them
     var pending = [];           // [{r, c, l, b, slot}] tiles on the board, not yet played
     var selected = -1;          // rack slot index
+    var arrangeMode = false, arrangeFrom = -1;
     var exchangeMode = false, marked = {};
     var cursor = { r: CENTER, c: CENTER, across: true };
     var previewSeq = 0, previewTimer = null;
@@ -231,7 +235,7 @@
     function schedulePreview() {
       clearTimeout(previewTimer);
       previewLine.className = 'ww-preview';
-      if (!pending.length) { previewLine.textContent = myTurn() ? 'Your turn: place tiles, then Play.' : ''; renderControls(); return; }
+      if (!pending.length) { previewLine.textContent = myTurn() ? 'Your turn: place tiles, then Play. ' + (v.scoreless || 0) + ' of 6 scoreless turns.' : ''; renderControls(); return; }
       previewLine.textContent = 'Checking…';
       var seq = ++previewSeq;
       previewTimer = setTimeout(function () {
@@ -293,12 +297,23 @@
       if (pending.length) return api.toast('Take back your tiles first.', 'info');
       for (var i = order.length - 1; i > 0; i--) { var j = Math.floor(Math.random() * (i + 1)); var t = order[i]; order[i] = order[j]; order[j] = t; }
       api.sound('roll');
+      saveDraft();
+      renderRack();
+    }
+
+    function moveRackTile(from, to) {
+      if (pending.length || from === to || from < 0 || to < 0) return;
+      var letter = order.splice(from, 1)[0];
+      order.splice(to, 0, letter);
+      selected = -1; arrangeFrom = -1;
+      saveDraft();
+      api.sound('click');
       renderRack();
     }
 
     // ---- drag (mouse and touch)
     function startDrag(e, slot, fromCell) {
-      if (!myTurn() || exchangeMode) return;
+      if (exchangeMode || (fromCell && !myTurn()) || (!fromCell && pending.length)) return;
       var sx = e.clientX, sy = e.clientY, ghost = null, moved = false;
       var target = e.currentTarget;
       if (e.pointerType === 'mouse') e.preventDefault();      // no text selection or native drag
@@ -314,16 +329,17 @@
         }
         ghost.style.left = ev.clientX + 'px';
         ghost.style.top = ev.clientY + 'px';
-        var c = cellAt(ev.clientX, ev.clientY);
-        Array.prototype.forEach.call(board.querySelectorAll('.ww-target'), function (x) { x.classList.remove('ww-target'); });
-        if (c) c.classList.add('ww-target');
+        var c = cellAt(ev.clientX, ev.clientY), rt = fromCell ? null : rackAt(ev.clientX, ev.clientY);
+        Array.prototype.forEach.call(root.querySelectorAll('.ww-target'), function (x) { x.classList.remove('ww-target'); });
+        if (rt) rt.classList.add('ww-target');
+        else if (c && myTurn()) c.classList.add('ww-target');
       }
       function up(ev) {
         target.removeEventListener('pointermove', move);
         target.removeEventListener('pointerup', up);
         target.removeEventListener('pointercancel', up);
         if (ghost && ghost.parentNode) ghost.parentNode.removeChild(ghost);
-        Array.prototype.forEach.call(board.querySelectorAll('.ww-target'), function (x) { x.classList.remove('ww-target'); });
+        Array.prototype.forEach.call(root.querySelectorAll('.ww-target'), function (x) { x.classList.remove('ww-target'); });
         if (!moved) return;                      // a tap: the click handler deals with it
         target._dragged = true;
         setTimeout(function () { target._dragged = false; }, 50);
@@ -334,7 +350,9 @@
             fromCell.r = +c.dataset.r; fromCell.c = +c.dataset.c; pending.push(fromCell); api.sound('place');
           }
           render(); schedulePreview();
-        } else if (c) {
+        } else if (rackAt(ev.clientX, ev.clientY)) {
+          moveRackTile(slot, +rackAt(ev.clientX, ev.clientY).dataset.slot);
+        } else if (c && myTurn() && !arrangeMode) {
           place(slot, +c.dataset.r, +c.dataset.c, fromCell && fromCell.b ? fromCell.l : null);
         }
       }
@@ -346,6 +364,11 @@
     function cellAt(x, y) {
       var hit = document.elementFromPoint(x, y);
       while (hit && hit !== document.body) { if (hit.classList && hit.classList.contains('ww-cell')) return hit; hit = hit.parentNode; }
+      return null;
+    }
+    function rackAt(x, y) {
+      var hit = document.elementFromPoint(x, y);
+      while (hit && hit !== document.body) { if (hit.classList && hit.classList.contains('ww-rtile')) return hit; hit = hit.parentNode; }
       return null;
     }
 
@@ -389,11 +412,11 @@
     function renderScores() {
       GNC.clear(scorebar);
       v.players.forEach(function (id) {
-        var p = player(id), turn = m.status === 'active' && v.current === id;
+        var p = player(id), turn = m.status === 'active' && v.current === id, resigned = (v.resigned || []).indexOf(id) >= 0;
         scorebar.appendChild(el('span', { class: 'gn-score' + (turn ? ' gn-turn' : ''), role: 'listitem',
-          'aria-label': p.name + ', ' + v.scores[id] + ' points, ' + v.rackCounts[id] + ' tiles' + (turn ? ', playing now' : '') },
+          'aria-label': p.name + ', ' + v.scores[id] + ' points, ' + v.rackCounts[id] + ' tiles' + (resigned ? ', resigned' : '') + (turn ? ', playing now' : '') },
         el('span', { class: 'gn-seat-chip', style: { background: p.color, color: p.text }, 'aria-hidden': 'true' }, p.symbol),
-        el('span', null, p.name), el('b', null, String(v.scores[id])), el('span', { class: 'gn-help', 'aria-hidden': 'true' }, '· ' + v.rackCounts[id] + ' tiles')));
+        el('span', null, p.name + (resigned ? ' (resigned)' : '')), el('b', null, String(v.scores[id])), el('span', { class: 'gn-help', 'aria-hidden': 'true' }, '· ' + v.rackCounts[id] + ' tiles')));
       });
       scorebar.appendChild(el('span', { class: 'ww-bag', 'aria-label': v.bagCount + ' tiles left in the bag' }, 'Bag: ' + v.bagCount));
     }
@@ -464,14 +487,19 @@
       var used = usedSlots();
       order.forEach(function (l, i) {
         if (used[i]) return;
-        var cls = (selected === i ? 'selected' : '') + (marked[i] ? ' marked' : '');
-        var b = el('button', { class: 'ww-rtile', 'aria-pressed': exchangeMode ? (marked[i] ? 'true' : 'false') : (selected === i ? 'true' : 'false'),
+        var cls = (selected === i || arrangeFrom === i ? 'selected' : '') + (marked[i] ? ' marked' : '');
+        var b = el('button', { class: 'ww-rtile', 'data-slot': i, 'aria-pressed': exchangeMode ? (marked[i] ? 'true' : 'false') : (selected === i || arrangeFrom === i ? 'true' : 'false'),
           'aria-label': (l === '?' ? 'blank tile' : spokenTile(l, false)) + (exchangeMode ? (marked[i] ? ', chosen to swap' : '') : '') });
         b.innerHTML = tileSvg(l === '?' ? '' : l, l === '?', cls);
         b.addEventListener('pointerdown', function (e) { startDrag(e, i, null); });
         b.addEventListener('click', function () {
           if (b._dragged) return;
           if (exchangeMode) { if (marked[i]) delete marked[i]; else marked[i] = true; api.sound('click'); renderRack(); renderControls(); return; }
+          if (arrangeMode) {
+            if (arrangeFrom < 0) { arrangeFrom = i; api.announce('Choose where to move ' + (l === '?' ? 'blank' : l) + '.'); renderRack(); }
+            else moveRackTile(arrangeFrom, i);
+            return;
+          }
           selected = selected === i ? -1 : i;
           api.sound('click');
           renderRack();
@@ -496,9 +524,15 @@
       controls.appendChild(playBtn);
       controls.appendChild(el('button', { class: 'gn-btn gn-quiet', disabled: !pending.length, onclick: recall }, 'Take back'));
       controls.appendChild(el('button', { class: 'gn-btn gn-quiet', onclick: shuffleRack, 'aria-label': 'Shuffle your rack' }, 'Shuffle'));
+      controls.appendChild(el('button', { class: 'gn-btn gn-quiet', disabled: !!pending.length, 'aria-pressed': arrangeMode ? 'true' : 'false',
+        onclick: function () { arrangeMode = !arrangeMode; arrangeFrom = -1; selected = -1; renderRack(); renderControls(); } }, arrangeMode ? 'Done arranging' : 'Arrange tiles'));
       controls.appendChild(el('button', { class: 'gn-btn gn-quiet', disabled: !mine || v.bagCount < 7,
         title: v.bagCount < 7 ? 'Needs at least 7 tiles in the bag' : '', onclick: function () { recall(); exchangeMode = true; marked = {}; render(); } }, 'Swap tiles'));
       controls.appendChild(el('button', { class: 'gn-btn gn-quiet', disabled: !mine, onclick: pass }, 'Pass'));
+      controls.appendChild(el('button', { class: 'gn-btn gn-quiet', disabled: (v.resigned || []).indexOf(api.me) >= 0,
+        onclick: function () { api.confirm('Resign from Wordwright?', 'Your unplayed tiles are deducted from your score. You cannot rejoin this match.', 'Resign', 'Keep playing').then(function (yes) {
+          if (yes) api.act({ type: 'resign' }).then(function (r) { if (r.ok) { pending = []; render(); } });
+        }); } }, 'Resign'));
       controls.appendChild(el('button', { class: 'gn-btn gn-quiet', 'aria-pressed': root.classList.contains('ww-zoom') ? 'true' : 'false',
         onclick: function (e) { root.classList.toggle('ww-zoom'); e.currentTarget.setAttribute('aria-pressed', root.classList.contains('ww-zoom') ? 'true' : 'false'); } }, 'Zoom'));
     }
@@ -508,6 +542,7 @@
       if (mv.type === 'play') return who + ' played ' + mv.words.map(function (w) { return w.word; }).join(', ') + ' for ' + mv.score + (mv.bingo ? ' (all seven tiles!)' : '');
       if (mv.type === 'exchange') return who + ' swapped ' + mv.count + ' tile' + (mv.count > 1 ? 's' : '');
       if (mv.type === 'pass') return who + ' passed';
+      if (mv.type === 'resign') return who + ' resigned';
       return who + ' ' + mv.type;
     }
 
@@ -526,8 +561,7 @@
     /** The draft survives a reload on this device (it never leaves the browser). */
     function saveDraft() {
       if (!m) return;
-      if (pending.length) GNC.store.set('ww.draft.' + m.id, JSON.stringify({ order: order, pending: pending }));
-      else GNC.store.del('ww.draft.' + m.id);
+      if (v && v.myRack) GNC.store.set('ww.draft.' + m.id, JSON.stringify({ order: order, pending: pending }));
     }
     function restoreDraft() {
       try {
@@ -545,7 +579,7 @@
       renderRack();
       renderControls();
       renderSide();
-      if (!pending.length) previewLine.textContent = myTurn() ? 'Your turn: place tiles, then Play.' : (m.status === 'active' ? '' : 'Game over.');
+      if (!pending.length) previewLine.textContent = myTurn() ? 'Your turn: place tiles, then Play. ' + (v.scoreless || 0) + ' of 6 scoreless turns.' : (m.status === 'active' ? '' : 'Game over.');
     }
 
     function loadArt(id) {

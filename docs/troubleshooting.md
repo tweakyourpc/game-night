@@ -1,7 +1,7 @@
 # Troubleshooting
 
 - **Not set up:** run setup from the new bound spreadsheet, then deploy its new script version. A copied project deliberately rejects inherited IDs. Do not paste an old sheet ID into properties.
-- **Missing Game Night menu:** save all files and reload Sheets, or run `gnSetup` from the bound editor. A standalone script is unsupported.
+- **Missing Game Night menu:** save all files and reload the spreadsheet in a desktop browser while signed in as an editor. Confirm the project was opened through that Sheet's **Extensions → Apps Script** menu. A standalone script is unsupported. Start setup from **Game Night → Set up this spreadsheet…** in Sheets; running `gnSetup` from the script editor can raise `Cannot call SpreadsheetApp.getUi() from this context`.
 - **Authorization/access denied:** use the installation owner's account and review organization restrictions. “Anyone” access and “Execute as: Me” are intended. Players do not authorize server services individually.
 - **Lost admin PIN:** a second admin may reset it through Group settings. With no signed-in admin, the trusted spreadsheet owner must recover access deliberately; there is no browser password-reset flow. Do not reset setup or copy a used sheet expecting to retain games.
 - **Unexpected screen change:** enable `?debug=1`, note action/time and whether it showed entry or lobby. Stale response and navigation guards were added; the original unexplained lobby report has not been conclusively reproduced. Entry after AUTH means a revoked/invalid session, not presence loss. Sessions do not expire by time. Avoid sharing token values in reports.

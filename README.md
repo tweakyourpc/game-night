@@ -2,15 +2,26 @@
 
 ![Game Night: turn a Google Sheet into your own online game room, play five games with people on separate devices, and keep files and replays in Google Drive.](assets/github/game-night-hero.png)
 
-A multiplayer kit you install in your own Google Sheet and bound Apps Script project.
+A multiplayer kit you install in your own Google Sheet and bound Apps Script project. Play Wordwright, Four in a Row, Dots and Boxes, Checkers, and Fivefold together in your browsers.
 
-**Start with [browser-only installation](docs/install.md).** No clasp, Node, Python, terminal, hosted asset service, or spreadsheet template is required. The release includes files to paste into Google's editor; it is not a ZIP importer. No public template is currently provided.
+## Download and install
 
-Before setting up a regular group, decide which Google account should run Game Night. A separate account is an optional way to keep Game Night invitations and Drive files apart from personal or everyday work activity. The account you deploy under sends app email and stores app files; game records stay in the spreadsheet. This can be a personal Google account or an organization-managed account. Workspace, mail delegation, and special service-account configuration are not required. See [installation](docs/install.md) and [identity/access](docs/identity.md).
+1. Get **game-night-v0.1.0.zip** from the [v0.1.0 GitHub Release](https://github.com/tweakyourpc/game-night/releases/tag/v0.1.0). Choose the installation ZIP under Assets; GitHub's automatic source-code archives are for development.
+2. Follow the [browser-only installation guide](docs/install.md). A desktop browser and text editor are enough. No clasp, Node, Python, terminal, or hosted asset service is required. Paste the supplied files into Google's editor; Apps Script does not import this ZIP. **No public spreadsheet template is currently provided.**
+3. Work through the [operator checklist](docs/operator-checklist.md) and [Google acceptance checklist](docs/google-acceptance.md) before regular use. This is a locally verified release candidate, **not production-ready**; real Google deployment testing remains required. See [known limitations](#limits).
+
+[Clasp](docs/clasp.md) and [local development](#optional-local-development) are optional developer workflows.
+
+## Choose the account that runs Game Night
+
+We recommend a separate Google account to keep Game Night mail, Drive files, and service authorizations separate from your personal or everyday work activity. **This is optional.** The account that deploys the web app sends invitations and reminders through MailApp and owns the installation's `Game Night files` Drive folder. The game spreadsheet contains the game data; players use the web-app link and do not need spreadsheet access. Use the same account for setup, deployment, and optional repair triggers.
+
+Personal and organization-managed Google accounts can be used. Google Workspace administrators may restrict public web apps or service authorization. Google mail delegation, aliases, and shared mailboxes are outside this kit and must be configured separately if desired. Choosing a dedicated account does not change player authentication; see [identity and access](docs/identity.md).
 
 ## Implemented
 
 - Wordwright (2-4), Four in a Row (2), Dots and Boxes (2-4), Checkers (2), and Fivefold (2-4).
+- Wordwright supports local rack sorting, resignation, and normal score tally after six scoreless turns. The separate Abandon match control ends a match without a winner.
 - Persistent tables, seats/readiness, host transfer, rematches, invitations, optional turn email, and pasted Meet links.
 - Walnut Parlor and Slate Study themes, synthesized sound, keyboard/touch controls, procedural boards and four optional Wordwright board pictures.
 - Server-authoritative moves, revision checks, retry identifiers, repairable follow-ups, session hashes and admin PINs.
@@ -26,10 +37,10 @@ The Maple, Walnut, Felt and Slate images were carried over from the supplied pro
 
 ## Guides
 
-[Setup](docs/install.md) · [Optional clasp](docs/clasp.md) · [Troubleshooting](docs/troubleshooting.md) · [Identity](docs/identity.md) · [Games](docs/game-authoring.md) · [Themes](docs/theme-authoring.md) · [Replay v1](docs/replay-format.md) · [Upgrade/backup](docs/upgrading.md) · [Licences](docs/licenses.md) · [Verification](docs/verification.md)
+[Setup](docs/install.md) · [Operator checklist](docs/operator-checklist.md) · [Google acceptance](docs/google-acceptance.md) · [Optional clasp](docs/clasp.md) · [Troubleshooting](docs/troubleshooting.md) · [Identity](docs/identity.md) · [Games](docs/game-authoring.md) · [Themes](docs/theme-authoring.md) · [Replay v1](docs/replay-format.md) · [Upgrade/backup](docs/upgrading.md) · [Licences](docs/licenses.md) · [Verification](docs/verification.md)
 
 ## Optional local development
 
-Node 20+ runs `npm test` and `npm run build` (ZIP utility also required). `npm run test:cases` reports individual test counts. `dist/apps-script` is generated; edit `src` instead. Browser/PDF checks additionally need Playwright and Chrome. Board regeneration and the optional EffectCraft converter need Python 3 and Pillow; EffectCraft rendering also needs `effectcraft-cli`. None of these are installation requirements.
+Node 20+ runs `npm test` and `npm run build` (ZIP and unzip utilities also required). `dist/apps-script` is generated; edit `src` instead. Browser/PDF checks additionally need Playwright and Chrome. Board regeneration and the optional EffectCraft converter need Python 3 and Pillow; EffectCraft rendering also needs `effectcraft-cli`. None of these are installation requirements.
 
 For a local preview, allocate a port first: `PORT=$(portbroker alloc --name game-night-dev)` then `node tools/dev_server.js --port "$PORT"`. It binds to LAN and uses synthetic demo accounts only. Without `--words <ENABLE-file>` its test dictionary accepts all words. Never use that harness as the Google deployment.

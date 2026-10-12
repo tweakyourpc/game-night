@@ -694,7 +694,7 @@
         var names = m.players.filter(function (p) { return m.actors.indexOf(p.id) >= 0; }).map(function (p) { return p.name; });
         var line = m.spectator ? 'Watching. ' + (names.length ? 'Waiting for ' + names.join(' and ') + '.' : '')
           : mine ? (m.actors.length > 1 ? 'Your move (others can move too).' : 'Your turn.') : 'Waiting for ' + names.join(' and ') + '.';
-        var end = m.spectator ? null : el('button', { class: 'gn-link', onclick: abandonMatch }, 'End this game');
+        var end = m.spectator ? null : el('button', { class: 'gn-link', onclick: abandonMatch }, 'Abandon match');
         return el('div', { class: 'gn-banner' + (mine ? ' gn-banner-go' : '') }, el('span', { role: 'status' }, line), end);
       }
       var r = m.result || {};
@@ -709,7 +709,10 @@
   }
 
   function abandonMatch() {
-    GNC.confirm('End this game for everyone?', 'Nobody wins. The table stays open for another game.', 'End game', 'Keep playing').then(function (yes) {
+    var wordwright = app.match && app.match.game_id === 'wordwright';
+    var detail = 'This stops the match without scoring a winner. The table stays open for another game.' +
+      (wordwright ? ' To finish Wordwright normally, players can Pass until six scoreless turns; rack points are then deducted and a winner is declared.' : '');
+    GNC.confirm('Abandon this match for everyone?', detail, 'Abandon match', 'Keep playing').then(function (yes) {
       if (!yes) return;
       var m = app.match;
       GNC.call('abandon', GNC.session.token(), m.id, GNC.req(m.rev)).then(function (res) {

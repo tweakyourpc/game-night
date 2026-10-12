@@ -45,6 +45,23 @@ try {
    assert.ok(await page.locator('[data-game="'+id+'"]').isVisible());
    assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+2),true,id+' horizontal overflow');
   }
+  if(id==='wordwright') {
+   await page.setViewportSize({width:390,height:900});
+   const labels=()=>page.locator('.ww-rtile').evaluateAll(tiles=>tiles.map(t=>t.getAttribute('aria-label')));
+   const beforeRack=await labels();
+   await page.getByRole('button',{name:'Arrange tiles'}).click();
+   await page.locator('.ww-rtile').first().click();
+   await page.locator('.ww-rtile').last().click();
+   assert.deepEqual(await labels(),beforeRack.slice(1).concat(beforeRack[0]),'tap sorting changes rack order locally');
+   await page.getByRole('button',{name:'Done arranging'}).click();
+   const beforeDrag=await labels();
+   await page.locator('.ww-rtile').first().dragTo(page.locator('.ww-rtile').last());
+   assert.deepEqual(await labels(),beforeDrag.slice(1).concat(beforeDrag[0]),'drag sorting changes rack order locally');
+   const active=(await rpc('match',bob,match)).match;
+   const resigned=await rpc('act',bob,match,{type:'resign'},req(active.rev));
+   assert.equal(resigned.match.status,'finished');
+   assert.equal(resigned.match.result.reason,'resignation');
+  }
   await page.evaluate(id=>GNC.replay.open(id),match);await page.waitForSelector('.gn-replay');
   await page.getByRole('button',{name:'Last move',exact:true}).click();
   const dl=page.waitForEvent('download');await page.getByRole('button',{name:'Download replay file',exact:true}).click();

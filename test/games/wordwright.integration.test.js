@@ -133,3 +133,15 @@ test('wordwright: three and four players take turns in seat order', () => {
   }
   assert.deepEqual(order, ['Ann', 'Bob', 'Cy', 'Dee']);
 });
+
+test('wordwright: a player may resign outside their turn and the replay records the winner', () => {
+  const { w, match } = started({ dictionary: false });
+  const r = w.call('act', w.tokens.Bob, match.id, { type: 'resign' }, w.req(0));
+  assert.equal(r.ok, true, r.error);
+  assert.equal(r.match.status, 'finished');
+  assert.deepEqual(r.match.result.winners, [w.idOf('Ann')]);
+  assert.equal(r.match.result.reason, 'resignation');
+  assert.deepEqual(r.match.view.resigned, [w.idOf('Bob')]);
+  const replay = w.call('replay', w.tokens.Ann, match.id).replay;
+  assert.deepEqual(replay.events.map((e) => e.type), ['start', 'resign', 'end']);
+});
