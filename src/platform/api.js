@@ -29,6 +29,7 @@ GN.api = (function () {
     closeTable: [3, function (t, id, req) { return GN.tables.close(t, id, req); }],
     match: [2, function (t, id) { return GN.matches.get(t, id); }],
     act: [4, function (t, id, action, req) { return GN.matches.act(t, id, action, req); }],
+    botTurn: [3, function (t, id, rev) { return GN.matches.botTurn(t, id, rev); }],
     query: [3, function (t, id, q) { return GN.matches.query(t, id, q); }],
     abandon: [3, function (t, id, req) { return GN.matches.abandon(t, id, req); }],
     asset: [3, function (t, game, name) { return GN.assets.get(t, game, name); }],

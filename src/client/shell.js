@@ -12,6 +12,7 @@
     lobby: null, lobbyV: null,
     table: null, here: [],
     match: null, matchHere: [], frame: null,
+    botPending: '',
     pendingLink: GNC.boot.link || '',
   };
   GNC.app = app;
@@ -263,6 +264,7 @@
     destroyFrame();
     GNC.applyTheme(app.lobby.defaultTheme || (app.lobby.themes[0] || {}).id);
     app.table = null; app.match = null;
+    try { var lobbyUrl = new URL(window.location.href); lobbyUrl.searchParams.delete('t'); window.history.replaceState(null, '', lobbyUrl); } catch (e) { /* embedded pages may deny history */ }
     clear(root);
     L.here = region('gn-l-here'); L.mine = region('gn-l-mine'); L.tables = region('gn-l-tables');
     L.catalog = region('gn-l-catalog'); L.admin = region('gn-l-admin');
@@ -324,6 +326,14 @@
           el('p', { class: 'gn-help' }, g.players.min === g.players.max ? g.players.min + ' players' : g.players.min + ' to ' + g.players.max + ' players'),
           el('div', { class: 'gn-row' },
             el('button', { class: 'gn-btn', onclick: function () { newTableDialog(g); } }, 'New table'),
+            g.id === 'wordwright' ? el('button', { class: 'gn-btn gn-quiet', onclick: function (e) {
+              var btn = e.currentTarget;
+              busy(btn, GNC.call('createTable', GNC.session.token(), { gameId: 'wordwright', computer: true,
+                themeId: app.lobby.defaultTheme }, GNC.newActionId())).then(function (res) {
+                if (!res.ok) return showError(res);
+                openTable(res.table.id, res.table);
+              });
+            } }, 'Play vs Computer') : null,
             el('button', { class: 'gn-btn gn-quiet', onclick: function () { howToPlay(g.id); } }, 'How to play')));
       }));
     });
@@ -451,6 +461,7 @@
     destroyFrame();
     app.table = known || null;
     app.match = null;
+    app.botPending = '';
     clear(root);
     T.head = region('gn-t-head'); T.play = el('div', { id: 'gn-t-play', class: 'gn-play' });
     T.seats = region('gn-t-seats'); T.setup = region('gn-t-setup'); T.invite = region('gn-t-invite');
@@ -479,6 +490,7 @@
     var prev = app.table;
     if (app.screen !== 'table' || (prev && (prev.id !== t.id || t.rev < prev.rev))) return;
     app.table = t;
+    try { var tableUrl = new URL(window.location.href); tableUrl.searchParams.set('t', t.share_key); window.history.replaceState(null, '', tableUrl); } catch (e) { /* embedded pages may deny history */ }
     GNC.applyTheme(t.theme_id);
     app.here = t.seats.filter(function (s) { return s.here; }).map(function (s) { return s.member_id; });
     if (t.current_match_id && (!app.match || app.match.id !== t.current_match_id)) loadMatch(t.current_match_id);
@@ -523,12 +535,12 @@
       var mine = t.seats.filter(function (s) { return s.member_id === me.id; })[0];
       var list = el('ol', { class: 'gn-seats' }, t.seats.map(function (s, i) {
         var st = GNC.seatStyle(t.theme_id, i);
-        var here = s.member_id === me.id || app.here.indexOf(s.member_id) >= 0;
+        var here = !s.bot && (s.member_id === me.id || app.here.indexOf(s.member_id) >= 0);
         return el('li', { class: 'gn-seat' + (s.ready ? ' gn-ready' : '') },
           el('span', { class: 'gn-seat-chip', style: { background: st.color, color: st.text }, 'aria-hidden': 'true' }, st.symbol),
           el('span', { class: 'gn-seat-name' }, s.name, s.host ? el('span', { class: 'gn-tag' }, 'host') : null),
-          el('span', { class: 'gn-dot' + (here ? ' gn-on' : ''), title: here ? 'here now' : 'away' }),
-          el('span', { class: 'gn-sr' }, here ? ', here now' : ', away'),
+          s.bot ? el('span', { class: 'gn-tag' }, 'computer') : el('span', { class: 'gn-dot' + (here ? ' gn-on' : ''), title: here ? 'here now' : 'away' }),
+          s.bot ? null : el('span', { class: 'gn-sr' }, here ? ', here now' : ', away'),
           t.status === 'open' ? el('span', { class: 'gn-ready-mark' }, s.ready ? '✓ ready' : 'not ready') : null);
       }));
       var g = t.players;
@@ -551,8 +563,8 @@
         }
       }
       var host = null;
-      if (isHost() && t.seats.length > 1) {
-        var sel = el('select', { id: 'gn-newhost', 'data-focus': 'gn-newhost' }, t.seats.filter(function (s) { return !s.host; }).map(function (s) {
+      if (isHost() && t.seats.some(function (s) { return !s.host && !s.bot; })) {
+        var sel = el('select', { id: 'gn-newhost', 'data-focus': 'gn-newhost' }, t.seats.filter(function (s) { return !s.host && !s.bot; }).map(function (s) {
           return el('option', { value: s.member_id }, s.name);
         }));
         host = el('details', { class: 'gn-more' }, el('summary', null, 'Host tools'),
@@ -575,10 +587,18 @@
         return el('div', null, el('p', null, el('strong', null, t.game_name)), desc.length ? el('ul', { class: 'gn-plain' }, desc.map(function (d) { return el('li', null, d); })) : null,
           el('button', { class: 'gn-btn gn-quiet', onclick: function () { howToPlay(t.game_id); } }, 'How to play'));
       }
-      var gameSel = el('select', { id: 'cfg-game', 'data-focus': 'cfg-game' }, app.lobby.catalog.map(function (c) {
+      var gameSel = el('select', { id: 'cfg-game', 'data-focus': 'cfg-game' }, app.lobby.catalog.filter(function (c) {
+        return !t.seats.some(function (s) { return s.bot; }) || c.id === 'wordwright';
+      }).map(function (c) {
         return el('option', { value: c.id, selected: c.id === t.game_id }, c.name);
       }));
       var opts = optionsForm(g, t.options.game);
+      var computerTable = t.seats.some(function (s) { return s.bot; });
+      if (computerTable) {
+        gameSel.disabled = true;
+        var dictionaryToggle = opts.node.querySelector('#opt-wordwright-dictionary');
+        if (dictionaryToggle) { dictionaryToggle.checked = true; dictionaryToggle.disabled = true; }
+      }
       var theme = themePicker(t.theme_id, 'cfg');
       var auto = el('input', { type: 'checkbox', checked: !!t.options.autostart });
       var invite = el('input', { type: 'checkbox', checked: !!t.options.inviteOnly });
@@ -596,11 +616,11 @@
       return el('div', { class: 'gn-form' },
         el('label', { for: 'cfg-game' }, 'Game'), gameSel, opts.node, theme.label, theme.node,
         el('label', { class: 'gn-check' }, auto, ' Start automatically when every seat is ready'),
-        el('label', { class: 'gn-check' }, invite, ' Invite only'),
+        computerTable ? el('p', { class: 'gn-help' }, 'Computer games stay private and use the word list.') : el('label', { class: 'gn-check' }, invite, ' Invite only'),
         el('div', { class: 'gn-row gn-wrap' }, save, el('button', { class: 'gn-btn gn-quiet', onclick: function () { howToPlay(gameSel.value); } }, 'How to play')));
     });
     patch(T.meet, function () { return meetPanel(t); });
-    patch(T.invite, function () { return invitePanel(t); });
+    patch(T.invite, function () { return t.seats.some(function (s) { return s.bot; }) ? el('p', { class: 'gn-help' }, 'Private game with the computer.') : invitePanel(t); });
     patch(T.history, function () {
       var done = t.matches.filter(function (m) { return m.status !== 'active'; });
       if (!done.length) return el('p', { class: 'gn-help' }, 'None yet.');
@@ -692,7 +712,8 @@
       if (m.status === 'active') {
         var mine = m.actors.indexOf(app.lobby.me.id) >= 0;
         var names = m.players.filter(function (p) { return m.actors.indexOf(p.id) >= 0; }).map(function (p) { return p.name; });
-        var line = m.spectator ? 'Watching. ' + (names.length ? 'Waiting for ' + names.join(' and ') + '.' : '')
+        var botActor = m.players.some(function (p) { return p.bot && m.actors.indexOf(p.id) >= 0; });
+        var line = botActor ? 'Computer thinking…' : m.spectator ? 'Watching. ' + (names.length ? 'Waiting for ' + names.join(' and ') + '.' : '')
           : mine ? (m.actors.length > 1 ? 'Your move (others can move too).' : 'Your turn.') : 'Waiting for ' + names.join(' and ') + '.';
         var end = m.spectator ? null : el('button', { class: 'gn-link', onclick: abandonMatch }, 'Abandon match');
         return el('div', { class: 'gn-banner' + (mine ? ' gn-banner-go' : '') }, el('span', { role: 'status' }, line), end);
@@ -762,6 +783,27 @@
       }
     }
     renderStatus();
+    requestBotTurn(m);
+  }
+
+  function requestBotTurn(m) {
+    if (m.status !== 'active' || !m.players.some(function (p) { return p.bot && m.actors.indexOf(p.id) >= 0; })) return;
+    var key = m.id + ':' + m.rev;
+    if (app.botPending === key) return;
+    app.botPending = key;
+    GNC.call('botTurn', GNC.session.token(), m.id, m.rev).then(function (res) {
+      if (app.botPending === key) app.botPending = '';
+      if (app.screen !== 'table' || !app.match || app.match.id !== m.id) return;
+      if (res.match) setMatch(res.match, res.ok ? 'bot' : 'stale');
+      if (!res.ok && res.code !== 'STALE') {
+        showError(res);
+        if (res.code === 'DICT') setTimeout(function () { if (app.match && app.match.id === m.id) requestBotTurn(app.match); }, 5000);
+      }
+      GNC.poller.now();
+    }).catch(function () {
+      if (app.botPending === key) app.botPending = '';
+      if (app.match && app.match.id === m.id) setTimeout(function () { requestBotTurn(app.match); }, 5000);
+    });
   }
 
   function frameApi(m) {

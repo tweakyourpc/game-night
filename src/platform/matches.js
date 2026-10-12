@@ -77,7 +77,7 @@ GN.matches = (function () {
     var existing = store().get('Matches', matchId);
     if (existing) return existing;
     var g = GN.catalog.game(table.game_id);
-    var players = table.seats.map(function (s) { return { id: s.member_id, name: nameOf(s.member_id) }; });
+    var players = table.seats.map(function (s) { return { id: s.member_id, name: s.bot ? 'Computer' : nameOf(s.member_id), bot: !!s.bot }; });
     var opts = GN.catalog.options(g, table.options && table.options.game);
     var ctx = { rng: GN.deps.rng, now: now(), services: GN.deps.services, options: opts,
       players: players.map(function (p) { return p.id; }) };
@@ -106,7 +106,7 @@ GN.matches = (function () {
       });
     });
     if (m.status !== 'active') {
-      GN.stats.recompute(m.players.map(function (p) { return p.id; }));
+      GN.stats.recompute(m.players.filter(function (p) { return !p.bot; }).map(function (p) { return p.id; }));
       GN.tables.release(m);
     }
     GN.notify.afterMatch(m);
@@ -129,20 +129,10 @@ GN.matches = (function () {
 
   // ------------------------------------------------------------------ actions
 
-  function act(token, matchId, action, req) {
-    GN.util.checkReq(req);
-    if (!action || typeof action !== 'object' || Array.isArray(action) || typeof action.type !== 'string' ||
-        GN.util.jsonSize(action) > MAX_ACTION) {
-      GN.fail('That move could not be read. Please reload.', 'BAD_REQUEST');
-    }
-    var out = GN.deps.withLock(function () {
-      store().refresh();
-      var me = GN.identity.auth(token);
-      var m = load(matchId);
-      if (!isPlayer(m, me.id)) GN.fail('You are not playing in this game.', 'FORBIDDEN');
+  function commitMove(m, actor, action, req, me) {
       var done = GN.util.findAction(m.actions, req.actionId);
       if (done) {
-        if (done.player !== me.id) GN.fail('Please reload the page and try again.', 'BAD_REQUEST');
+        if (done.player !== actor) GN.fail('Please reload the page and try again.', 'BAD_REQUEST');
         followupsQuietly(m);
         return { ok: true, duplicate: true, rev: done.rev, response: done.response || {}, match: viewFor(m, me) };
       }
@@ -153,14 +143,14 @@ GN.matches = (function () {
       if (m.status !== 'active') GN.fail('This game is over.', 'OVER');
       var g = GN.catalog.game(m.game_id);
       var anytime = (g.anytime || []).indexOf(action.type) >= 0;
-      if (!anytime && g.actors(m.state).indexOf(me.id) < 0) GN.fail("It's not your turn.", 'NOT_YOUR_TURN');
-      var res = g.apply(GN.util.clone(m.state), me.id, GN.util.clone(action), ctxFor(m));
+      if (!anytime && g.actors(m.state).indexOf(actor) < 0) GN.fail("It's not your turn.", 'NOT_YOUR_TURN');
+      var res = g.apply(GN.util.clone(m.state), actor, GN.util.clone(action), ctxFor(m));
       if (!res || !res.ok) return { ok: false, code: (res && res.code) || 'ILLEGAL', error: (res && res.error) || 'That move is not allowed.' };
 
       GN.sync.invalidate('m:' + m.id);
       var rev = m.rev + 1, seq = nextSeq(m), at = now();
       var events = (res.events && res.events.length ? res.events : [{ type: action.type, public: {} }]).map(function (e, i) {
-        return { seq: seq + i, type: e.type, actor: me.id, public: GN.util.clone(e.public || {}) };
+        return { seq: seq + i, type: e.type, actor: actor, public: GN.util.clone(e.public || {}) };
       });
       // the public position after the action, so replays never re-run the rules
       events[events.length - 1].public.snapshot = g.view(res.state, null);
@@ -172,13 +162,45 @@ GN.matches = (function () {
         m.status = res.result.status === 'abandoned' ? 'abandoned' : 'finished';
         m.result = res.result;
       }
-      m.actions = GN.util.remember(m.actions, { id: req.actionId, player: me.id, rev: rev, at: at,
+      m.actions = GN.util.remember(m.actions, { id: req.actionId, player: actor, rev: rev, at: at,
         response: res.response || {}, events: events }, KEEP);
       store().put('Matches', m);                       // the commit point
       followupsQuietly(m);
-      GN.sync.here('m:' + m.id, me.id, []);            // acting counts as being here
+      GN.sync.here('m:' + m.id, me.id, []);            // only the requesting human is here
       GN.sync.here('t:' + m.table_id, me.id, []);
       return { ok: true, rev: rev, response: res.response || {}, match: viewFor(m, me) };
+  }
+
+  function act(token, matchId, action, req) {
+    GN.util.checkReq(req);
+    if (/^bot_/.test(req.actionId)) GN.fail('Please reload the page and try again.', 'BAD_REQUEST');
+    if (!action || typeof action !== 'object' || Array.isArray(action) || typeof action.type !== 'string' ||
+        GN.util.jsonSize(action) > MAX_ACTION) GN.fail('That move could not be read. Please reload.', 'BAD_REQUEST');
+    var out = GN.deps.withLock(function () {
+      store().refresh();
+      var me = GN.identity.auth(token), m = load(matchId);
+      if (!isPlayer(m, me.id)) GN.fail('You are not playing in this game.', 'FORBIDDEN');
+      return commitMove(m, me.id, action, req, me);
+    });
+    if (out.ok && !out.duplicate) GN.outbox.flushQuietly();
+    return out;
+  }
+
+  function botTurn(token, matchId, expectedRevision) {
+    if (!Number.isInteger(expectedRevision) || expectedRevision < 0) GN.fail('Please reload the page.', 'BAD_REQUEST');
+    var out = GN.deps.withLock(function () {
+      store().refresh();
+      var me = GN.identity.auth(token), m = load(matchId);
+      if (!m.players.some(function (p) { return p.id === me.id && !p.bot; })) GN.fail('You are not playing in this game.', 'FORBIDDEN');
+      var bot = m.players.filter(function (p) { return p.bot; })[0];
+      if (!bot || !GN.bots || !GN.bots[m.game_id]) GN.fail('This game has no computer opponent.', 'BAD_REQUEST');
+      var req = { expectedRevision: expectedRevision, actionId: 'bot_' + expectedRevision };
+      var done = GN.util.findAction(m.actions, req.actionId);
+      if (done) return commitMove(m, bot.id, {}, req, me);
+      if (expectedRevision !== m.rev) return { ok: false, code: 'STALE', match: viewFor(m, me), error: 'The game changed a moment ago.' };
+      if (m.status !== 'active' || GN.catalog.game(m.game_id).actors(m.state).indexOf(bot.id) < 0) GN.fail("It's not the computer's turn.", 'NOT_YOUR_TURN');
+      var action = GN.bots[m.game_id].choose(m.state, bot.id, ctxFor(m));
+      return commitMove(m, bot.id, action, req, me);
     });
     if (out.ok && !out.duplicate) GN.outbox.flushQuietly();
     return out;
@@ -235,7 +257,7 @@ GN.matches = (function () {
   }
 
   return {
-    act: act, abandon: abandon, query: query, get: get, load: load, viewFor: viewFor, createForTable: createForTable,
+    act: act, botTurn: botTurn, abandon: abandon, query: query, get: get, load: load, viewFor: viewFor, createForTable: createForTable,
     followups: followups, followupsQuietly: followupsQuietly, isPlayer: isPlayer,
   };
 })();

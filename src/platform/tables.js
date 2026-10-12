@@ -45,6 +45,7 @@ GN.tables = (function () {
     var m = store().get('Members', id);
     return m ? m.name : '(unknown)';
   }
+  function seatName(s) { return s.bot ? 'Computer' : nameOf(s.member_id); }
 
   function view(t, me, opts) {
     var g = GN.catalog.game(t.game_id);
@@ -58,12 +59,12 @@ GN.tables = (function () {
       });
     return {
       id: t.id, share_key: t.share_key, title: t.title, host_id: t.host_id, game_id: t.game_id,
-      game_name: GN.NAMES.games[t.game_id] || t.game_id, players: g.players, theme_id: t.theme_id,
+      game_name: GN.NAMES.games[t.game_id] || t.game_id, players: t.seats.some(function (s) { return s.bot; }) ? { min: 2, max: 2 } : g.players, theme_id: t.theme_id,
       options: t.options, status: t.status, current_match_id: t.current_match_id, match_count: t.match_count,
       rev: t.rev, created: t.created, updated: t.updated, meet_url: t.meet_url || '',
       seats: t.seats.map(function (s) {
-        return { member_id: s.member_id, name: nameOf(s.member_id), ready: !!s.ready,
-          here: here.indexOf(s.member_id) >= 0, host: s.member_id === t.host_id };
+        return { member_id: s.member_id, name: seatName(s), bot: !!s.bot, ready: !!s.ready,
+          here: !s.bot && here.indexOf(s.member_id) >= 0, host: s.member_id === t.host_id };
       }),
       invited: { members: (t.invited.members || []).map(function (id) { return { id: id, name: nameOf(id) }; }),
         emails: (t.invited.emails || []).length },
@@ -165,19 +166,29 @@ GN.tables = (function () {
         var prior = store().list('Tables').filter(function (x) {
           return x.created_action === actionId && x.host_id === me.id;
         })[0];
-        if (prior) return { ok: true, duplicate: true, table: view(prior, me) };
+        if (prior) { repairStart(prior); return { ok: true, duplicate: true, table: view(prior, me) }; }
         var g = GN.catalog.game(spec.gameId);
+        if (spec.computer && g.id !== 'wordwright') GN.fail('This game has no computer opponent.', 'BAD_REQUEST');
+        var computer = spec.computer === true;
         var t = {
           id: GN.deps.newId(10), share_key: GN.deps.newId(16),
           title: cleanTitle(spec.title, me.name + "'s table"), host_id: me.id, game_id: g.id,
           theme_id: GN.catalog.theme(spec.themeId),
           options: { game: GN.catalog.options(g, spec.options), autostart: spec.autostart === true,
-            inviteOnly: spec.inviteOnly === true },
-          seats: [{ member_id: me.id, ready: false, joined_at: now() }],
+            inviteOnly: computer || spec.inviteOnly === true },
+          seats: [{ member_id: me.id, ready: computer, joined_at: now() }],
           invited: { members: [], emails: [] }, meet_url: '', status: 'open', current_match_id: '',
           match_count: 0, rev: 0, created_action: actionId, created: now(), updated: now(), actions: [],
         };
+        if (computer) {
+          t.options.game.dictionary = true;
+          t.seats.push({ member_id: t.id + '-bot', bot: true, ready: true, joined_at: now() });
+          var matchId = t.id + '-1';
+          GN.matches.createForTable(t, matchId);
+          t.status = 'playing'; t.current_match_id = matchId; t.match_count = 1;
+        }
         store().put('Tables', t);
+        if (computer) GN.matches.followupsQuietly(store().get('Matches', t.current_match_id));
         GN.sync.publish('t:' + t.id, { rev: 0, status: 'open' });
         GN.sync.touch('lobby');
         return { ok: true, table: view(t, me) };
@@ -205,6 +216,7 @@ GN.tables = (function () {
         if (seated(t, me.id)) GN.fail('You already have a seat.', 'SEATED');
         if (t.status !== 'open') GN.fail('A game is in progress at this table.', 'PLAYING');
         if (!invitedOk(t, me.id)) GN.fail('This table is invite-only.', 'FORBIDDEN');
+        if (t.seats.some(function (s) { return s.bot; })) GN.fail('This computer table has two seats.', 'FULL');
         var g = GN.catalog.game(t.game_id);
         if (t.seats.length >= g.players.max) GN.fail('The table is full.', 'FULL');
         t.seats.push({ member_id: me.id, ready: false, joined_at: now() });
@@ -240,6 +252,7 @@ GN.tables = (function () {
         if (t.status !== 'open') GN.fail('Finish or end the current game first.', 'PLAYING');
         spec = spec && typeof spec === 'object' ? spec : {};
         var g = GN.catalog.game(spec.gameId || t.game_id);
+        if (t.seats.some(function (s) { return s.bot; }) && g.id !== 'wordwright') GN.fail('Computer tables only support Wordwright.', 'BAD_REQUEST');
         if (t.seats.length > g.players.max) {
           GN.fail((GN.NAMES.games[g.id] || g.id) + ' allows at most ' + g.players.max + ' players; ' +
             t.seats.length + ' are seated.', 'TOO_MANY');
@@ -251,8 +264,9 @@ GN.tables = (function () {
           autostart: spec.autostart !== undefined ? spec.autostart === true : t.options.autostart,
           inviteOnly: spec.inviteOnly !== undefined ? spec.inviteOnly === true : t.options.inviteOnly,
         };
+        if (t.seats.some(function (s) { return s.bot; })) { t.options.game.dictionary = true; t.options.inviteOnly = true; }
         if (spec.title !== undefined) t.title = cleanTitle(spec.title, t.title);
-        t.seats.forEach(function (s) { s.ready = false; });
+        t.seats.forEach(function (s) { s.ready = !!s.bot; });
         return {};
       });
     },
@@ -261,6 +275,7 @@ GN.tables = (function () {
       if (GN.util.jsonSize(spec) > 4000) GN.fail('That request is too large.', 'BAD_REQUEST');
       return mutate(token, tableId, req, function (t, me) {
         requireHost(t, me);
+        if (t.seats.some(function (s) { return s.bot; })) GN.fail('Computer tables cannot invite another player.', 'BAD_REQUEST');
         spec = spec && typeof spec === 'object' ? spec : {};
         var ids = Array.isArray(spec.members) ? spec.members.filter(function (id) { return GN.util.isId(id); }) : [];
         var emails = Array.isArray(spec.emails) ? spec.emails.map(function (e) { return String(e).trim(); }) : [];
@@ -308,7 +323,7 @@ GN.tables = (function () {
     transferHost: function (token, tableId, req, memberId) {
       return mutate(token, tableId, req, function (t, me) {
         requireHost(t, me);
-        if (!seated(t, memberId)) GN.fail('The new host must have a seat.', 'BAD_REQUEST');
+        if (!seated(t, memberId) || t.seats.some(function (s) { return s.bot && s.member_id === memberId; })) GN.fail('The new host must be a person at this table.', 'BAD_REQUEST');
         t.host_id = memberId;
         return {};
       });
@@ -339,7 +354,7 @@ GN.tables = (function () {
       if (!t || t.current_match_id !== m.id || t.status !== 'playing') return false;
       GN.sync.invalidate('t:' + t.id);
       t.status = 'open';
-      t.seats.forEach(function (s) { s.ready = false; });
+      t.seats.forEach(function (s) { s.ready = !!s.bot; });
       t.rev = t.rev + 1;
       t.updated = now();
       store().put('Tables', t);

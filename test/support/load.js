@@ -14,6 +14,8 @@ function serverFiles() {
   for (const g of fs.readdirSync(path.join(SRC, 'games')).sort()) {
     const rules = path.join('games', g, 'rules.js');
     if (fs.existsSync(path.join(SRC, rules))) list.push(rules);
+    const bot = path.join('games', g, 'bot.js');
+    if (fs.existsSync(path.join(SRC, bot))) list.push(bot);
   }
   return list;
 }

@@ -144,6 +144,7 @@ GN.api = (function () {
     closeTable: [3, function (t, id, req) { return GN.tables.close(t, id, req); }],
     match: [2, function (t, id) { return GN.matches.get(t, id); }],
     act: [4, function (t, id, action, req) { return GN.matches.act(t, id, action, req); }],
+    botTurn: [3, function (t, id, rev) { return GN.matches.botTurn(t, id, rev); }],
     query: [3, function (t, id, q) { return GN.matches.query(t, id, q); }],
     abandon: [3, function (t, id, req) { return GN.matches.abandon(t, id, req); }],
     asset: [3, function (t, game, name) { return GN.assets.get(t, game, name); }],
@@ -699,8 +700,8 @@ GN.lobby = (function () {
         return {
           id: t.id, title: t.title, game_id: t.game_id, game_name: GN.NAMES.games[t.game_id] || t.game_id,
           theme_id: t.theme_id, host: names[t.host_id] || '(unknown)', host_id: t.host_id, status: t.status,
-          seats: t.seats.map(function (s) { return { member_id: s.member_id, name: names[s.member_id] || '(unknown)', ready: !!s.ready }; }),
-          players: g.players, inviteOnly: !!t.options.inviteOnly,
+          seats: t.seats.map(function (s) { return { member_id: s.member_id, name: s.bot ? 'Computer' : names[s.member_id] || '(unknown)', bot: !!s.bot, ready: !!s.ready }; }),
+          players: t.seats.some(function (s) { return s.bot; }) ? { min: 2, max: 2 } : g.players, inviteOnly: !!t.options.inviteOnly,
           invited: (t.invited.members || []).indexOf(me.id) >= 0, meet: !!t.meet_url,
           current_match_id: t.current_match_id, updated: t.updated, created: t.created, match_count: t.match_count,
         };
@@ -948,7 +949,7 @@ GN.matches = (function () {
     var existing = store().get('Matches', matchId);
     if (existing) return existing;
     var g = GN.catalog.game(table.game_id);
-    var players = table.seats.map(function (s) { return { id: s.member_id, name: nameOf(s.member_id) }; });
+    var players = table.seats.map(function (s) { return { id: s.member_id, name: s.bot ? 'Computer' : nameOf(s.member_id), bot: !!s.bot }; });
     var opts = GN.catalog.options(g, table.options && table.options.game);
     var ctx = { rng: GN.deps.rng, now: now(), services: GN.deps.services, options: opts,
       players: players.map(function (p) { return p.id; }) };
@@ -977,7 +978,7 @@ GN.matches = (function () {
       });
     });
     if (m.status !== 'active') {
-      GN.stats.recompute(m.players.map(function (p) { return p.id; }));
+      GN.stats.recompute(m.players.filter(function (p) { return !p.bot; }).map(function (p) { return p.id; }));
       GN.tables.release(m);
     }
     GN.notify.afterMatch(m);
@@ -1000,20 +1001,10 @@ GN.matches = (function () {
 
   // ------------------------------------------------------------------ actions
 
-  function act(token, matchId, action, req) {
-    GN.util.checkReq(req);
-    if (!action || typeof action !== 'object' || Array.isArray(action) || typeof action.type !== 'string' ||
-        GN.util.jsonSize(action) > MAX_ACTION) {
-      GN.fail('That move could not be read. Please reload.', 'BAD_REQUEST');
-    }
-    var out = GN.deps.withLock(function () {
-      store().refresh();
-      var me = GN.identity.auth(token);
-      var m = load(matchId);
-      if (!isPlayer(m, me.id)) GN.fail('You are not playing in this game.', 'FORBIDDEN');
+  function commitMove(m, actor, action, req, me) {
       var done = GN.util.findAction(m.actions, req.actionId);
       if (done) {
-        if (done.player !== me.id) GN.fail('Please reload the page and try again.', 'BAD_REQUEST');
+        if (done.player !== actor) GN.fail('Please reload the page and try again.', 'BAD_REQUEST');
         followupsQuietly(m);
         return { ok: true, duplicate: true, rev: done.rev, response: done.response || {}, match: viewFor(m, me) };
       }
@@ -1024,14 +1015,14 @@ GN.matches = (function () {
       if (m.status !== 'active') GN.fail('This game is over.', 'OVER');
       var g = GN.catalog.game(m.game_id);
       var anytime = (g.anytime || []).indexOf(action.type) >= 0;
-      if (!anytime && g.actors(m.state).indexOf(me.id) < 0) GN.fail("It's not your turn.", 'NOT_YOUR_TURN');
-      var res = g.apply(GN.util.clone(m.state), me.id, GN.util.clone(action), ctxFor(m));
+      if (!anytime && g.actors(m.state).indexOf(actor) < 0) GN.fail("It's not your turn.", 'NOT_YOUR_TURN');
+      var res = g.apply(GN.util.clone(m.state), actor, GN.util.clone(action), ctxFor(m));
       if (!res || !res.ok) return { ok: false, code: (res && res.code) || 'ILLEGAL', error: (res && res.error) || 'That move is not allowed.' };
 
       GN.sync.invalidate('m:' + m.id);
       var rev = m.rev + 1, seq = nextSeq(m), at = now();
       var events = (res.events && res.events.length ? res.events : [{ type: action.type, public: {} }]).map(function (e, i) {
-        return { seq: seq + i, type: e.type, actor: me.id, public: GN.util.clone(e.public || {}) };
+        return { seq: seq + i, type: e.type, actor: actor, public: GN.util.clone(e.public || {}) };
       });
       // the public position after the action, so replays never re-run the rules
       events[events.length - 1].public.snapshot = g.view(res.state, null);
@@ -1043,13 +1034,45 @@ GN.matches = (function () {
         m.status = res.result.status === 'abandoned' ? 'abandoned' : 'finished';
         m.result = res.result;
       }
-      m.actions = GN.util.remember(m.actions, { id: req.actionId, player: me.id, rev: rev, at: at,
+      m.actions = GN.util.remember(m.actions, { id: req.actionId, player: actor, rev: rev, at: at,
         response: res.response || {}, events: events }, KEEP);
       store().put('Matches', m);                       // the commit point
       followupsQuietly(m);
-      GN.sync.here('m:' + m.id, me.id, []);            // acting counts as being here
+      GN.sync.here('m:' + m.id, me.id, []);            // only the requesting human is here
       GN.sync.here('t:' + m.table_id, me.id, []);
       return { ok: true, rev: rev, response: res.response || {}, match: viewFor(m, me) };
+  }
+
+  function act(token, matchId, action, req) {
+    GN.util.checkReq(req);
+    if (/^bot_/.test(req.actionId)) GN.fail('Please reload the page and try again.', 'BAD_REQUEST');
+    if (!action || typeof action !== 'object' || Array.isArray(action) || typeof action.type !== 'string' ||
+        GN.util.jsonSize(action) > MAX_ACTION) GN.fail('That move could not be read. Please reload.', 'BAD_REQUEST');
+    var out = GN.deps.withLock(function () {
+      store().refresh();
+      var me = GN.identity.auth(token), m = load(matchId);
+      if (!isPlayer(m, me.id)) GN.fail('You are not playing in this game.', 'FORBIDDEN');
+      return commitMove(m, me.id, action, req, me);
+    });
+    if (out.ok && !out.duplicate) GN.outbox.flushQuietly();
+    return out;
+  }
+
+  function botTurn(token, matchId, expectedRevision) {
+    if (!Number.isInteger(expectedRevision) || expectedRevision < 0) GN.fail('Please reload the page.', 'BAD_REQUEST');
+    var out = GN.deps.withLock(function () {
+      store().refresh();
+      var me = GN.identity.auth(token), m = load(matchId);
+      if (!m.players.some(function (p) { return p.id === me.id && !p.bot; })) GN.fail('You are not playing in this game.', 'FORBIDDEN');
+      var bot = m.players.filter(function (p) { return p.bot; })[0];
+      if (!bot || !GN.bots || !GN.bots[m.game_id]) GN.fail('This game has no computer opponent.', 'BAD_REQUEST');
+      var req = { expectedRevision: expectedRevision, actionId: 'bot_' + expectedRevision };
+      var done = GN.util.findAction(m.actions, req.actionId);
+      if (done) return commitMove(m, bot.id, {}, req, me);
+      if (expectedRevision !== m.rev) return { ok: false, code: 'STALE', match: viewFor(m, me), error: 'The game changed a moment ago.' };
+      if (m.status !== 'active' || GN.catalog.game(m.game_id).actors(m.state).indexOf(bot.id) < 0) GN.fail("It's not the computer's turn.", 'NOT_YOUR_TURN');
+      var action = GN.bots[m.game_id].choose(m.state, bot.id, ctxFor(m));
+      return commitMove(m, bot.id, action, req, me);
     });
     if (out.ok && !out.duplicate) GN.outbox.flushQuietly();
     return out;
@@ -1106,7 +1129,7 @@ GN.matches = (function () {
   }
 
   return {
-    act: act, abandon: abandon, query: query, get: get, load: load, viewFor: viewFor, createForTable: createForTable,
+    act: act, botTurn: botTurn, abandon: abandon, query: query, get: get, load: load, viewFor: viewFor, createForTable: createForTable,
     followups: followups, followupsQuietly: followupsQuietly, isPlayer: isPlayer,
   };
 })();
@@ -1435,6 +1458,7 @@ GN.tables = (function () {
     var m = store().get('Members', id);
     return m ? m.name : '(unknown)';
   }
+  function seatName(s) { return s.bot ? 'Computer' : nameOf(s.member_id); }
 
   function view(t, me, opts) {
     var g = GN.catalog.game(t.game_id);
@@ -1448,12 +1472,12 @@ GN.tables = (function () {
       });
     return {
       id: t.id, share_key: t.share_key, title: t.title, host_id: t.host_id, game_id: t.game_id,
-      game_name: GN.NAMES.games[t.game_id] || t.game_id, players: g.players, theme_id: t.theme_id,
+      game_name: GN.NAMES.games[t.game_id] || t.game_id, players: t.seats.some(function (s) { return s.bot; }) ? { min: 2, max: 2 } : g.players, theme_id: t.theme_id,
       options: t.options, status: t.status, current_match_id: t.current_match_id, match_count: t.match_count,
       rev: t.rev, created: t.created, updated: t.updated, meet_url: t.meet_url || '',
       seats: t.seats.map(function (s) {
-        return { member_id: s.member_id, name: nameOf(s.member_id), ready: !!s.ready,
-          here: here.indexOf(s.member_id) >= 0, host: s.member_id === t.host_id };
+        return { member_id: s.member_id, name: seatName(s), bot: !!s.bot, ready: !!s.ready,
+          here: !s.bot && here.indexOf(s.member_id) >= 0, host: s.member_id === t.host_id };
       }),
       invited: { members: (t.invited.members || []).map(function (id) { return { id: id, name: nameOf(id) }; }),
         emails: (t.invited.emails || []).length },
@@ -1555,19 +1579,29 @@ GN.tables = (function () {
         var prior = store().list('Tables').filter(function (x) {
           return x.created_action === actionId && x.host_id === me.id;
         })[0];
-        if (prior) return { ok: true, duplicate: true, table: view(prior, me) };
+        if (prior) { repairStart(prior); return { ok: true, duplicate: true, table: view(prior, me) }; }
         var g = GN.catalog.game(spec.gameId);
+        if (spec.computer && g.id !== 'wordwright') GN.fail('This game has no computer opponent.', 'BAD_REQUEST');
+        var computer = spec.computer === true;
         var t = {
           id: GN.deps.newId(10), share_key: GN.deps.newId(16),
           title: cleanTitle(spec.title, me.name + "'s table"), host_id: me.id, game_id: g.id,
           theme_id: GN.catalog.theme(spec.themeId),
           options: { game: GN.catalog.options(g, spec.options), autostart: spec.autostart === true,
-            inviteOnly: spec.inviteOnly === true },
-          seats: [{ member_id: me.id, ready: false, joined_at: now() }],
+            inviteOnly: computer || spec.inviteOnly === true },
+          seats: [{ member_id: me.id, ready: computer, joined_at: now() }],
           invited: { members: [], emails: [] }, meet_url: '', status: 'open', current_match_id: '',
           match_count: 0, rev: 0, created_action: actionId, created: now(), updated: now(), actions: [],
         };
+        if (computer) {
+          t.options.game.dictionary = true;
+          t.seats.push({ member_id: t.id + '-bot', bot: true, ready: true, joined_at: now() });
+          var matchId = t.id + '-1';
+          GN.matches.createForTable(t, matchId);
+          t.status = 'playing'; t.current_match_id = matchId; t.match_count = 1;
+        }
         store().put('Tables', t);
+        if (computer) GN.matches.followupsQuietly(store().get('Matches', t.current_match_id));
         GN.sync.publish('t:' + t.id, { rev: 0, status: 'open' });
         GN.sync.touch('lobby');
         return { ok: true, table: view(t, me) };
@@ -1595,6 +1629,7 @@ GN.tables = (function () {
         if (seated(t, me.id)) GN.fail('You already have a seat.', 'SEATED');
         if (t.status !== 'open') GN.fail('A game is in progress at this table.', 'PLAYING');
         if (!invitedOk(t, me.id)) GN.fail('This table is invite-only.', 'FORBIDDEN');
+        if (t.seats.some(function (s) { return s.bot; })) GN.fail('This computer table has two seats.', 'FULL');
         var g = GN.catalog.game(t.game_id);
         if (t.seats.length >= g.players.max) GN.fail('The table is full.', 'FULL');
         t.seats.push({ member_id: me.id, ready: false, joined_at: now() });
@@ -1630,6 +1665,7 @@ GN.tables = (function () {
         if (t.status !== 'open') GN.fail('Finish or end the current game first.', 'PLAYING');
         spec = spec && typeof spec === 'object' ? spec : {};
         var g = GN.catalog.game(spec.gameId || t.game_id);
+        if (t.seats.some(function (s) { return s.bot; }) && g.id !== 'wordwright') GN.fail('Computer tables only support Wordwright.', 'BAD_REQUEST');
         if (t.seats.length > g.players.max) {
           GN.fail((GN.NAMES.games[g.id] || g.id) + ' allows at most ' + g.players.max + ' players; ' +
             t.seats.length + ' are seated.', 'TOO_MANY');
@@ -1641,8 +1677,9 @@ GN.tables = (function () {
           autostart: spec.autostart !== undefined ? spec.autostart === true : t.options.autostart,
           inviteOnly: spec.inviteOnly !== undefined ? spec.inviteOnly === true : t.options.inviteOnly,
         };
+        if (t.seats.some(function (s) { return s.bot; })) { t.options.game.dictionary = true; t.options.inviteOnly = true; }
         if (spec.title !== undefined) t.title = cleanTitle(spec.title, t.title);
-        t.seats.forEach(function (s) { s.ready = false; });
+        t.seats.forEach(function (s) { s.ready = !!s.bot; });
         return {};
       });
     },
@@ -1651,6 +1688,7 @@ GN.tables = (function () {
       if (GN.util.jsonSize(spec) > 4000) GN.fail('That request is too large.', 'BAD_REQUEST');
       return mutate(token, tableId, req, function (t, me) {
         requireHost(t, me);
+        if (t.seats.some(function (s) { return s.bot; })) GN.fail('Computer tables cannot invite another player.', 'BAD_REQUEST');
         spec = spec && typeof spec === 'object' ? spec : {};
         var ids = Array.isArray(spec.members) ? spec.members.filter(function (id) { return GN.util.isId(id); }) : [];
         var emails = Array.isArray(spec.emails) ? spec.emails.map(function (e) { return String(e).trim(); }) : [];
@@ -1698,7 +1736,7 @@ GN.tables = (function () {
     transferHost: function (token, tableId, req, memberId) {
       return mutate(token, tableId, req, function (t, me) {
         requireHost(t, me);
-        if (!seated(t, memberId)) GN.fail('The new host must have a seat.', 'BAD_REQUEST');
+        if (!seated(t, memberId) || t.seats.some(function (s) { return s.bot && s.member_id === memberId; })) GN.fail('The new host must be a person at this table.', 'BAD_REQUEST');
         t.host_id = memberId;
         return {};
       });
@@ -1729,7 +1767,7 @@ GN.tables = (function () {
       if (!t || t.current_match_id !== m.id || t.status !== 'playing') return false;
       GN.sync.invalidate('t:' + t.id);
       t.status = 'open';
-      t.seats.forEach(function (s) { s.ready = false; });
+      t.seats.forEach(function (s) { s.ready = !!s.bot; });
       t.rev = t.rev + 1;
       t.updated = now();
       store().put('Tables', t);
@@ -2971,6 +3009,81 @@ GN.games.wordwright = (function () {
     },
   };
 })();
+
+
+// ---- src/games/wordwright/bot.js
+/** A bounded, deterministic casual opponent. The rules remain the final judge. */
+var GN = typeof GN !== 'undefined' ? GN : {};
+GN.bots = GN.bots || {};
+
+GN.bots.wordwright = {
+  choose: function (state, player, ctx) {
+    var dict = null;
+    try { dict = ctx.services && ctx.services.dict && ctx.services.dict(); } catch (e) { dict = null; }
+    if (!dict || typeof dict.has !== 'function' || typeof dict.forEach !== 'function') {
+      GN.fail('The word list is not available right now. Try again in a minute.', 'DICT');
+    }
+    var W = GN.wordwright, board = state.board, rack = state.racks[player];
+    var start = Date.now(), nodes = 0, stopped = false, best = null;
+    var occupied = [], counts = {}, rackCounts = {};
+    for (var r = 0; r < W.SIZE; r++) for (var c = 0; c < W.SIZE; c++) {
+      if (board[r][c]) {
+        occupied.push({ r: r, c: c, l: board[r][c].l });
+        counts[board[r][c].l] = (counts[board[r][c].l] || 0) + 1;
+      }
+    }
+    rack.forEach(function (l) { rackCounts[l] = (rackCounts[l] || 0) + 1; });
+    var blankCount = rackCounts['?'] || 0;
+    function withinLimit() {
+      if (nodes >= 50000 || Date.now() - start >= 2000) { stopped = true; return false; }
+      return true;
+    }
+    function tryAt(word, row, col, dr, dc) {
+      if (!withinLimit()) return;
+      nodes++;
+      var available = Object.assign({}, rackCounts), blanks = blankCount, placed = [];
+      for (var i = 0; i < word.length; i++) {
+        var rr = row + dr * i, cc = col + dc * i, l = word.charAt(i);
+        if (rr < 0 || cc < 0 || rr >= W.SIZE || cc >= W.SIZE) return;
+        var tile = board[rr][cc];
+        if (tile) { if (tile.l !== l) return; continue; }
+        if (available[l]) { available[l]--; placed.push({ r: rr, c: cc, l: l }); }
+        else if (blanks) { blanks--; placed.push({ r: rr, c: cc, l: l, b: true }); }
+        else return;
+      }
+      if (!placed.length || placed.length > rack.length) return;
+      var score = W.evaluateMove(board, rack, placed, dict);
+      if (score.ok && (!best || score.score > best.score)) best = { score: score.score, placements: placed };
+    }
+    dict.forEach(function (entry) {
+      if (stopped || !withinLimit()) return;
+      var word = String(entry).toUpperCase();
+      if (!/^[A-Z]{2,15}$/.test(word)) return;
+      var needed = {}, deficit = 0;
+      for (var i = 0; i < word.length; i++) needed[word.charAt(i)] = (needed[word.charAt(i)] || 0) + 1;
+      Object.keys(needed).forEach(function (l) { deficit += Math.max(0, needed[l] - (rackCounts[l] || 0) - (counts[l] || 0)); });
+      if (deficit > blankCount) return;
+      if (!occupied.length) {
+        for (var offset = 0; offset < word.length; offset++) {
+          if (stopped) return;
+          tryAt(word, W.CENTER, W.CENTER - offset, 0, 1);
+          tryAt(word, W.CENTER - offset, W.CENTER, 1, 0);
+        }
+      } else {
+        for (var a = 0; a < occupied.length; a++) {
+          for (var j = 0; j < word.length; j++) {
+            if (stopped) return;
+            if (word.charAt(j) !== occupied[a].l) continue;
+            tryAt(word, occupied[a].r, occupied[a].c - j, 0, 1);
+            tryAt(word, occupied[a].r - j, occupied[a].c, 1, 0);
+          }
+        }
+      }
+    });
+    if (best) return { type: 'play', placements: best.placements };
+    return state.bag.length >= W.RACK_SIZE && rack.length ? { type: 'exchange', letters: rack.slice() } : { type: 'pass' };
+  },
+};
 
 
 // ---- src/appsscript/Server.js

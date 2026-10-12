@@ -33,8 +33,8 @@ GN.lobby = (function () {
         return {
           id: t.id, title: t.title, game_id: t.game_id, game_name: GN.NAMES.games[t.game_id] || t.game_id,
           theme_id: t.theme_id, host: names[t.host_id] || '(unknown)', host_id: t.host_id, status: t.status,
-          seats: t.seats.map(function (s) { return { member_id: s.member_id, name: names[s.member_id] || '(unknown)', ready: !!s.ready }; }),
-          players: g.players, inviteOnly: !!t.options.inviteOnly,
+          seats: t.seats.map(function (s) { return { member_id: s.member_id, name: s.bot ? 'Computer' : names[s.member_id] || '(unknown)', bot: !!s.bot, ready: !!s.ready }; }),
+          players: t.seats.some(function (s) { return s.bot; }) ? { min: 2, max: 2 } : g.players, inviteOnly: !!t.options.inviteOnly,
           invited: (t.invited.members || []).indexOf(me.id) >= 0, meet: !!t.meet_url,
           current_match_id: t.current_match_id, updated: t.updated, created: t.created, match_count: t.match_count,
         };

@@ -32,7 +32,10 @@ function themes() {
 function serverFiles() {
   const list = ['config/names.js', 'themes/themes.js'];
   for (const f of fs.readdirSync(path.join(SRC, 'platform')).sort()) if (f.endsWith('.js')) list.push('platform/' + f);
-  for (const g of gameIds()) list.push('games/' + g + '/rules.js');
+  for (const g of gameIds()) {
+    list.push('games/' + g + '/rules.js');
+    if (fs.existsSync(path.join(SRC, 'games', g, 'bot.js'))) list.push('games/' + g + '/bot.js');
+  }
   list.push('appsscript/Server.js');
   return list;
 }

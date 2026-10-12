@@ -9,6 +9,13 @@
 - `npm run build` emits the Apps Script bundle and `dist/game-night-v0.1.0.zip`. The build compiles scripts, audits source raster files and encoded image payloads, preserves notices, and reopens/scans the ZIP.
 - The copied-project fake tests check inherited IDs before setup and distinct sessions after setup. The font and OFL are byte-identical to the supplied project copies; OFL also matches Google Fonts' authoritative bytes.
 
+## Wordwright computer opponent (2026-10-12)
+
+- `workspace-quality-gate` passed: 190 individual tests, Apps Script bundle build, and release content audit.
+- The packaged browser passed `tools/bot-browser-check.mjs` at 1280px and 390px. It created a private computer table, refreshed during the computer's turn, observed the committed move, and checked the replay. The full five-game packaged browser check also passed at both widths.
+- Tests cover opening, extension, crossing, blanks, exchange/pass, bounded search, duplicate and stale calls, word-list failures, rematch restrictions, replay events, and rack privacy.
+- The bound test Apps Script project received the seven packaged files. Version 7 was created and the existing test web app deployment was updated to version 7; clasp confirmed that mapping. A cold bot turn has **not** yet been benchmarked in that real deployment. Do not treat local harness timing as this release gate or publish a new GitHub release until the benchmark is complete.
+
 ## Google state
 
 A separate spreadsheet and bound Apps Script project were created with clasp. Version 4 was configured as a web app with anonymous access and execution as the deploying account. An initial public smoke check returned HTTP 403. The owner subsequently reported successful setup, administrator sign-in and a second player signed in on a phone. Those are user-reported smoke results, not completion of the full Google acceptance suite. The original 403 cause was not independently established. The deployment does not use the existing Crabbles instance. Keep the [Google acceptance checklist](google-acceptance.md) pending until each item is actually tested, using the [operator checklist](operator-checklist.md) to organize testing.
