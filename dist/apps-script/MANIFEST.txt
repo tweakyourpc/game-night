@@ -1,8 +1,8 @@
 Game Night 0.1.0
 See ../docs/install.md. Paste these files into a NEW bound Apps Script project.
 
-Code.gs  2f4d4bcb6881aa7821e1fbd0512cdba433ca1e7952944968a22b51b16d09000b
-Index.html  7f60fc46e854c3bc0409ed87074ae533d200f9351ecafeef80a92cf95d483f28
+Code.gs  93aa5503adb44ae1a046295c76efbacd7e57ffeccfa8c53381a023d63383da5c
+Index.html  5f167fd5d93498e43b7ac8f55305561801d72324c2768f1c37544dcdeca2f644
 appsscript.json  f671e95def36602b60e506f23f881fca97081250a44502c71f628fcbf27b034c
 asset_wordwright_board_maple.html  f55b6ba71a10fb21ea872d6cb63f54ca723d3ef374a8ded6cfead421b34eda3b
 asset_wordwright_board_walnut.html  325c0e52d5df2be306be294563e0ddb7f712cd19aebc1b97743833aa6c7acb2d

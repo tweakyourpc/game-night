@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Added Tic-tac-toe, including server rules, SVG-friendly browser UI, help text, and tests.
 - Add Play vs Computer for a private, dictionary-checked Wordwright match with a human first move.
 - Add a bounded Wordwright computer search, server-authorized and idempotent bot turns, automatic turn requests after refresh, and computer names in tables, scores and replays.
 - Keep computer seats separate from members and sessions; restrict computer tables to Wordwright rematches.

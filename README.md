@@ -2,7 +2,7 @@
 
 ![Game Night: turn a Google Sheet into your own online game room, play five games with people on separate devices, and keep files and replays in Google Drive.](assets/github/game-night-hero.png)
 
-A multiplayer kit you install in your own Google Sheet and bound Apps Script project. Play Wordwright, Four in a Row, Dots and Boxes, Checkers, and Fivefold together in your browsers.
+A multiplayer kit you install in your own Google Sheet and bound Apps Script project. Play Wordwright, Four in a Row, Dots and Boxes, Checkers, Fivefold, and Tic-tac-toe together in your browsers.
 
 ## Download and install
 
@@ -20,7 +20,7 @@ Personal and organization-managed Google accounts can be used. Google Workspace 
 
 ## Implemented
 
-- Wordwright (2-4), Four in a Row (2), Dots and Boxes (2-4), Checkers (2), and Fivefold (2-4).
+- Wordwright (2-4), Four in a Row (2), Dots and Boxes (2-4), Checkers (2), Fivefold (2-4), and Tic-tac-toe (2).
 - Wordwright supports local rack sorting, resignation, and normal score tally after six scoreless turns. The separate Abandon match control ends a match without a winner.
 - Persistent tables, seats/readiness, host transfer, rematches, invitations, optional turn email, and pasted Meet links.
 - Walnut Parlor and Slate Study themes, synthesized sound, keyboard/touch controls, procedural boards and four optional Wordwright board pictures.

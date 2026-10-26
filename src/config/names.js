@@ -12,5 +12,6 @@ GN.NAMES = {
     dots: 'Dots and Boxes',
     checkers: 'Checkers',
     fivefold: 'Fivefold',          // the five-dice scorecard game; rename freely
+    tictactoe: 'Tic-tac-toe',
   },
 };
