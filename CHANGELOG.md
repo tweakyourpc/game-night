@@ -6,6 +6,7 @@
 - Add Play vs Computer for a private, dictionary-checked Wordwright match with a human first move.
 - Add a bounded Wordwright computer search, server-authorized and idempotent bot turns, automatic turn requests after refresh, and computer names in tables, scores and replays.
 - Keep computer seats separate from members and sessions; restrict computer tables to Wordwright rematches.
+- Fix Wordwright showing "The board changed, so your tiles went back to your rack" after your own successful play: the new board can arrive before the play's response.
 - Add focused bot tests and a packaged browser check for desktop, phone and reconnect behavior. A cold turn benchmark on a real Apps Script test deployment remains a release gate.
 
 ## 0.1.0

@@ -178,6 +178,9 @@
     /** Keep the draft if it still fits the new board and rack; otherwise give the tiles back. */
     function reconcile() {
       if (!pending.length) return;
+      // Our own play can reach the board before its response does: the draft is now on the board.
+      var landed = pending.every(function (p) { var t = v.board[p.r][p.c]; return t && t.l === p.l && !!t.b === p.b; });
+      if (landed) { pending = []; selected = -1; return; }
       var ok = m.status === 'active' && pending.every(function (p) { return !v.board[p.r][p.c] && order[p.slot] === (p.b ? '?' : p.l); });
       if (!ok) {
         pending = [];
